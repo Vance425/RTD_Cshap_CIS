@@ -18,7 +18,7 @@ namespace RTDWebAPI.Commons.Method.Mail
         private string AccountId { get; set; }
         private string AccountPwd { get; set; }
         public MailMessage MailMsg { get; set; }
-        public string SendMail()
+        public void SendMail()
         {
             MailMode = Config["MailSetting:Mode"];
             SmtpServer = Config["MailSetting:smtpServer"];
@@ -45,8 +45,6 @@ namespace RTDWebAPI.Commons.Method.Mail
             }
             catch(Exception ex)
             { }
-
-            return tmpMessage;
         }
 
         public bool SendMailLocalhost(out string _message)
@@ -78,7 +76,7 @@ namespace RTDWebAPI.Commons.Method.Mail
                 client.Credentials = new NetworkCredential(this.AccountId, this.AccountPwd); //這裡要填正確的帳號跟密碼
                 client.Host = this.SmtpServer; //"smtp.gmail.com"; //設定smtp Server
                 client.Port = 25; //設定Port
-                client.EnableSsl = false; //gmail預設開啟驗證
+                client.EnableSsl = true; //gmail預設開啟驗證
                 client.Send(this.MailMsg); //寄出信件
                 client.Dispose();
                 this.MailMsg.Dispose();

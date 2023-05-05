@@ -27,27 +27,14 @@ namespace RTDWebAPI.Controllers
         private readonly ILogger _logger;
         private readonly DBTool _dbTool;
         private readonly ConcurrentQueue<EventQueue> _eventQueue;
-        private readonly Dictionary<string, object> _uiDataCatch;
-        private readonly List<DBTool> _lstDBSession;
 
-        public ReleaseCarrierController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue, Dictionary<string, object> uiDataCatch)
+        public ReleaseCarrierController(DBTool dbTool, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
         {
-            _dbTool = (DBTool)lstDBSession[0];
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
+            _dbTool = dbTool;
             _eventQueue = eventQueue;
-            _uiDataCatch = uiDataCatch;
-            _lstDBSession = lstDBSession;
-
-            for (int idb = _lstDBSession.Count - 1; idb >= 0; idb--)
-            {
-                _dbTool = _lstDBSession[idb];
-                if (_dbTool.IsConnected)
-                {
-                    break;
-                }
-            }
         }
 
         [HttpPost]

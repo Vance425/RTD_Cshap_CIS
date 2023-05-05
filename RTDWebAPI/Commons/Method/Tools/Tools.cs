@@ -22,8 +22,8 @@ namespace RTDWebAPI.Commons.Method.Tools
         /// <returns></returns> 
         //public static string GetTimeStampByDay()
         //{
-        //    DateTime.Now
-        //    TimeSpan ts = DateTime.Now - new DateTime(now.year, now);
+        //    DateTime.UtcNow
+        //    TimeSpan ts = DateTime.UtcNow - new DateTime(now.year, now);
         //    return Convert.ToInt64(ts.TotalSeconds).ToString();
         //}
         /// <summary> 
@@ -32,7 +32,7 @@ namespace RTDWebAPI.Commons.Method.Tools
         /// <returns></returns> 
         public static string GetTimeStamp()
         {
-            TimeSpan ts = DateTime.Now - new DateTime(1970, 1, 1, 0, 0, 0, 0);
+            TimeSpan ts = DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, 0);
             return Convert.ToInt64(ts.TotalSeconds).ToString();
         }
         /// <summary> 
@@ -44,7 +44,7 @@ namespace RTDWebAPI.Commons.Method.Tools
         {
             //20221118 改為GID使用, 開頭由U >> G
             string commandId = "G{0}{1}";
-            string strDateTime = DateTime.Now.ToString("yyyyMMddHHmm");
+            string strDateTime = DateTime.UtcNow.ToString("yyyyMMddHH24");
             long unikey = OracleSequence.Nextvalue(_dbTool, "UID_STREAMCODE");
             string Seq = unikey.ToString().PadLeft(7, '0');
             commandId = string.Format(commandId, strDateTime, Seq);
@@ -58,7 +58,7 @@ namespace RTDWebAPI.Commons.Method.Tools
         public static string GetCommandID(DBTool _dbTool)
         {
             string commandId = "{0}{1}";
-            string strDateTime = DateTime.Now.ToString("yyyyMMddHHmm");
+            string strDateTime = DateTime.UtcNow.ToString("yyyyMMddHH24");
             long unikey = OracleSequence.Nextvalue(_dbTool, "command_streamCode");
             string Seq = unikey.ToString().PadLeft(5,'0');
             commandId = string.Format(commandId, strDateTime, Seq);
@@ -216,12 +216,12 @@ namespace RTDWebAPI.Commons.Method.Tools
 
             try
             {
-                tmpSQL = string.Format("SELECT count(*) FROM all_sequences WHERE sequence_name = '{0}'", _SequenceName.ToUpper());
+                tmpSQL = string.Format("SELECT count(*) FROM all_sequences WHERE sequence_name = '{0}'", _SequenceName);
                 dt = _dbTool.GetDataTable(tmpSQL);
 
                 if(int.Parse(dt.Rows[0][0].ToString()) <= 0)
                 { 
-                    tmpSQL = String.Format("create sequence {0} minvalue {1} maxvalue {2} start with 1 increment by 1 cache 10", _SequenceName.ToUpper(), _minvalue, _maxvalue);
+                    tmpSQL = String.Format("create sequence {0} minvalue {1} maxvalue {2} start with 1 increment by 1 cache 10", _SequenceName, _minvalue, _maxvalue);
                     _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
                 }
 
@@ -246,15 +246,11 @@ namespace RTDWebAPI.Commons.Method.Tools
                    alter sequence carrier_streamCode increment by -9; --(-28-1)
                    alter sequence carrier_streamCode minvalue 1;
                  */
-                List<int> seq = _dbTool.GetSeqBySeqName(_SequenceName.ToUpper(), 1);
+                List<int> seq = _dbTool.GetSeqBySeqName(_SequenceName, 1);
                 currval = seq[0];
-                tmpSQL = String.Format("alter sequence {0} increment by {1}", _SequenceName.ToUpper(), - 1 * (currval - 2));
-                //_dbTool.SQLExec(tmpSQL, out tmpMsg, true);
-                tmpSQL = string.Format("SELECT {0}.NEXTVAL AS NEXTVAL FROM DUAL", _SequenceName.ToUpper());
-                //_dbTool.SQLExec(tmpSQL, out tmpMsg, true);
-                tmpSQL = String.Format("alter sequence {0} increment by 1 minvalue 1", _SequenceName.ToUpper());
-                //_dbTool.SQLExec(tmpSQL, out tmpMsg, true);
-                tmpSQL = String.Format("alter sequence {0} restart start with 1", _SequenceName.ToUpper());
+                tmpSQL = String.Format("alter sequence carrier_streamCode increment by {0}", -1 * (currval - 1));
+                _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
+                tmpSQL = "alter sequence carrier_streamCode minvalue 1";
                 _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
                 _bResult = true;
             }
@@ -284,36 +280,16 @@ namespace RTDWebAPI.Commons.Method.Tools
 
             try
             {
-                tmpSQL = string.Format("alter sequence {0} increment by -1", _SequenceName.ToUpper());
+                tmpSQL = string.Format("alter sequence {0} increment by -1", _SequenceName);
                 _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
-                tmpSQL = string.Format("select {0}.nextval from dual", _SequenceName.ToUpper());
+                tmpSQL = string.Format("select {0}.nextval from dual", _SequenceName);
                 _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
-                tmpSQL = string.Format("alter sequence {0} increment by 1", _SequenceName.ToLower());
+                tmpSQL = string.Format("alter sequence {0} increment by 1", _SequenceName);
                 _dbTool.SQLExec(tmpSQL, out tmpMsg, true);
                 _bResult = true;
             }
             catch (Exception ex)
             { _bResult = false; }
-            return _bResult;
-        }
-        public static bool ExistsSequance(DBTool _dbTool, string _SequenceName)
-        {
-            DataTable dt = null;
-
-            string tmpMsg = ""; bool _bResult = false;
-            string tmpSQL = string.Format("select * from user_sequences where sequence_name like '%{0}%'", _SequenceName.ToUpper());
-
-            try
-            {
-                dt = _dbTool.GetDataTable(tmpSQL);
-                if (dt.Rows.Count > 0)
-                    _bResult = true;
-                else
-                    _bResult = false;
-            }
-            catch (Exception ex)
-            { _bResult = false; }
-
             return _bResult;
         }
     }

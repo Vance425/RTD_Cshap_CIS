@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 using NLog;
-using RTDWebAPI.Commons.Method.Database;
 using RTDWebAPI.Interface;
 using RTDWebAPI.Models;
 using System;
@@ -24,24 +23,12 @@ namespace RTDWebAPI.Controllers
         private readonly IFunctionService _functionService;
         private readonly IConfiguration _configuration;
         private readonly ILogger _logger;
-        private readonly DBTool _dbTool;
-        private readonly List<DBTool> _lstDBSession;
 
-        public SendCommandController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService)
+        public SendCommandController(IConfiguration configuration, ILogger logger, IFunctionService functionService)
         {
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
-            _lstDBSession = lstDBSession;
-
-            for (int idb = _lstDBSession.Count - 1; idb >= 0; idb--)
-            {
-                _dbTool = _lstDBSession[idb];
-                if (_dbTool.IsConnected)
-                {
-                    break;
-                }
-            }
         }
 
         [HttpPost]
@@ -74,13 +61,8 @@ namespace RTDWebAPI.Controllers
                 tmpp.Add(value.HoldCode);
                 tmpp.Add(value.TurnRatio.ToString());
                 tmpp.Add(value.EOTD);
-                tmpp.Add(value.HoldReas);
-                tmpp.Add(value.POTD);
-                tmpp.Add(value.WaferLot);
-                tmpp.Add(value.Quantity.ToString());
-                tmpp.Add(value.Total.ToString());
-
-                foo = _functionService.SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", tmpp);
+                
+                foo = _functionService.SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", tmpp);
             }
             catch(Exception ex)
             {

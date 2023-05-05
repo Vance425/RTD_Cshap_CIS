@@ -17,7 +17,6 @@ namespace RTDWebAPI.APP
     {
         public ConcurrentQueue<EventQueue> _eventQueue { get; set; }
         public Dictionary<string, string> _threadConntroll { get; set; }
-        public Dictionary<string, string> _alarmDetail { get; set; }
         public IConfiguration _configuration { get; set; }
         public DBTool _dbTool { get; set; }
         public DBTool _dbAPI { get; set; }

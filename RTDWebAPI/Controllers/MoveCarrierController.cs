@@ -27,25 +27,14 @@ namespace RTDWebAPI.Controllers
         private readonly ILogger _logger;
         private readonly DBTool _dbTool;
         private readonly ConcurrentQueue<EventQueue> _eventQueue;
-        private readonly List<DBTool> _lstDBSession;
 
-        public MoveCarrierController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
+        public MoveCarrierController(DBTool dbTool, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
         {
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
-            //_dbTool = dbTool;
+            _dbTool = dbTool;
             _eventQueue = eventQueue;
-            _lstDBSession = lstDBSession;
-
-            for (int idb = _lstDBSession.Count - 1; idb >= 0; idb--)
-            {
-                _dbTool = _lstDBSession[idb];
-                if (_dbTool.IsConnected)
-                {
-                    break;
-                }
-            }
         }
 
         [HttpPost]
@@ -64,7 +53,6 @@ namespace RTDWebAPI.Controllers
             DataRow[] dr = null;
             string sql = "";
             int iQty = 0;
-            string _locateType = "";
 
             try
             {
@@ -97,10 +85,7 @@ namespace RTDWebAPI.Controllers
                     tmpMsg = "";
                     string tmpSource = _functionService.GetLocatePort(dt.Rows[0]["Locate"].ToString(), dt.Rows[0]["PortNo"].ToString().Equals("") ? 1 : int.Parse(dt.Rows[0]["PortNo"].ToString()), "");
 
-                    _locateType = dt.Rows[0]["location_type"].ToString();
-
                     value.Source = tmpSource.Equals(value.Source) ? value.Source : tmpSource;
-                    value.CarrierType = dt.Rows[0]["carrier_type"].ToString().Equals("Null") ? "" : dt.Rows[0]["carrier_type"].ToString();
                 }
                 else
                 {
@@ -113,76 +98,8 @@ namespace RTDWebAPI.Controllers
                     return foo;
                 }
 
-                string strLocate = "";
-                string strPort = "";
-                string strRows = "0";
-                string strCols = "0";
-                if (!value.Source.Equals(""))
-                {
-                    if (value.Source.Contains("_LP"))
-                    {
-                        strLocate = value.Source.Split("_LP")[0].ToString();
-                        strPort = value.Source.Split("_LP")[1].ToString();
-
-                        sql = string.Format(_BaseDataService.QueryCarrierByCarrierID(value.CarrierID));
-                        dt = _dbTool.GetDataTable(sql);
-                        //strRows = dt.Rows[0]["rack_rows"].ToString();
-                        //strCols = dt.Rows[0]["rack_cols"].ToString();
-                        //rack_rows, rack_cols
-                        sql = string.Format(_BaseDataService.QueryRackByGroupID(strLocate));
-                        dt = _dbTool.GetDataTable(sql);
-
-                        if (dt.Rows.Count > 0)
-                        {
-                            if(_locateType.Equals("STK"))
-                                value.Source = "*";
-                            /*
-                            if (dt.Rows[0]["MAC"].ToString().Equals("STOCK"))
-                            {
-                                value.Source = "*";
-                                //value.Source = strLocate;
-                                //value.Source = "";
-                                //value.Source = string.Format("{0}{1}-{2}", strLocate, strRows.PadLeft(2, '0'), strCols.PadLeft(2, '0'));
-                            }
-                            else
-                            {
-                                value.Source = strLocate;
-                            }*/
-                        }
-                        else
-                        {
-                            if (_locateType.Equals("STK"))
-                                value.Source = "*";
-                        }
-                    }
-                }
-
-                if (!value.Dest.Equals(""))
-                {
-
-                    if (value.Dest.Contains("_LP"))
-                    {
-                        strLocate = value.Dest.Split("_LP")[0].ToString();
-                        strPort = value.Dest.Split("_LP")[1].ToString();
-
-                        sql = string.Format(_BaseDataService.QueryRackByGroupID(strLocate));
-                        dt = _dbTool.GetDataTable(sql);
-
-                        if (dt.Rows.Count > 0)
-                        {
-                            if (dt.Rows[0]["MAC"].ToString().Equals("STOCK")) {
-                                value.Dest = strLocate;
-                            }
-                            else 
-                            {
-
-                                value.Dest = string.Format("{0}_LP{1}", strLocate, strPort.PadLeft(2,'0'));
-                            }
-                        }
-                    }
-
-                    value.CommandType = "MANUAL-DIRECT";
-
+                if(!value.Dest.Equals(""))
+                {                     
                     //Do Nothing
                     foo.Success = true;
                     foo.State = "OK";

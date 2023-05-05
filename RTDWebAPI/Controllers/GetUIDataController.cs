@@ -20,11 +20,6 @@ using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using static RTDWebAPI.Controllers.DeleteWorkinProcessController;
-using static RTDWebAPI.Controllers.GetUIDataController;
-using RTDSrv;
-using RTDWebAPI.Commons.Method.WSClient;
-using System.Xml;
-using System.IO;
 
 namespace RTDWebAPI.Controllers
 {
@@ -39,10 +34,9 @@ namespace RTDWebAPI.Controllers
         private readonly DBTool _dbTool;
         private readonly ConcurrentQueue<EventQueue> _eventQueue;
         private readonly Dictionary<string, object> _uiDataCatch;
-        private readonly Dictionary<string, string> _alarmDetail;
         private readonly List<DBTool> _lstDBSession;
 
-        public GetUIDataController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue, Dictionary<string, object> uiDataCatch, Dictionary<string, string> alarmDetail)
+        public GetUIDataController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue, Dictionary<string, object> uiDataCatch)
         {
             _dbTool = (DBTool)lstDBSession[0]; 
             _logger = logger;
@@ -51,7 +45,6 @@ namespace RTDWebAPI.Controllers
             _eventQueue = eventQueue;
             _uiDataCatch = uiDataCatch;
             _lstDBSession = lstDBSession;
-            _alarmDetail = alarmDetail;
 
             for (int idb = _lstDBSession.Count-1; idb >= 0; idb--)
             {
@@ -240,19 +233,10 @@ namespace RTDWebAPI.Controllers
             string sql = "";
             IBaseDataService _BaseDataService = new BaseDataService();
 
-            string tableOrder = "";
-            string _keyOfEnv = "";
-            string _keyRTDEnv = "";
-
             try
             {
-                _keyRTDEnv = _configuration["RTDEnvironment:type"];
-                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
-                //"RTDEnvironment:commandsTable:PROD"
-                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
-
                 //// 查詢資料
-                dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSch(tableOrder));
+                dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSch());
                 dr = dt.Select();
                 if (dr.Length <= 0)
                 {
@@ -642,7 +626,6 @@ namespace RTDWebAPI.Controllers
                         {
                             lstEquipPortStates.Add(equipmentPortState);
                             equipmentPortState = new EquipmentPortState();
-                            equipmentPortState.EqID = dr2["equipid"].ToString();
                         }
                         equipmentSlotInfo = new EquipmentSlotInfo();
                         equipmentSlotInfo.slotNo = int.Parse(dr2["port_seq"].ToString().Equals("") ? "0" : dr2["port_seq"].ToString());
@@ -679,7 +662,6 @@ namespace RTDWebAPI.Controllers
                             {
                                 lstEquipPortStates.Add(equipmentPortState);
                                 equipmentPortState = new EquipmentPortState();
-                                equipmentPortState.EqID = rackid;
                             }
                             equipmentSlotInfo = new EquipmentSlotInfo();
                             equipmentSlotInfo.slotNo = i;
@@ -982,17 +964,8 @@ namespace RTDWebAPI.Controllers
             string sql = "";
             IBaseDataService _BaseDataService = new BaseDataService();
 
-            string tableOrder = "";
-            string _keyOfEnv = "";
-            string _keyRTDEnv = "";
-
             try
             {
-                _keyRTDEnv = _configuration["RTDEnvironment:type"];
-                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _configuration["RTDEnvironment:type"]);
-                //"RTDEnvironment:commandsTable:PROD"
-                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
-
                 dt = _dbTool.GetDataTable(_BaseDataService.QueryCarrierInfoByCarrierId(value.CarrierId));
 
                 if(dt.Rows.Count > 0)
@@ -1001,7 +974,7 @@ namespace RTDWebAPI.Controllers
                     if (dt.Rows[0]["reserve"].ToString().Equals("1"))
                     {
                         dtTemp = null;
-                        dtTemp = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(value.CarrierId, tableOrder));
+                        dtTemp = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(value.CarrierId));
 
                         if (dtTemp.Rows.Count > 0)
                         {
@@ -1094,7 +1067,7 @@ namespace RTDWebAPI.Controllers
                         WorkinProcessHis.EquipId = row["EquipId"].ToString();
                         WorkinProcessHis.Cmd_State = row["Cmd_State"].ToString();
                         WorkinProcessHis.CarrierId = row["CarrierId"].ToString();
-                        WorkinProcessHis.CarrierType = row["carrierType"].Equals(null) ? " " : row["carrierType"].ToString();
+                        WorkinProcessHis.CarrierType = row["CarrierType"].ToString();
                         WorkinProcessHis.Source = row["Source"].ToString();
                         WorkinProcessHis.Dest = row["Dest"].ToString();
                         WorkinProcessHis.Priority = row["Priority"].ToString().Equals("") ? 0 : int.Parse(row["Priority"].ToString());
@@ -1141,11 +1114,11 @@ namespace RTDWebAPI.Controllers
             public string StartTime { get; set; }
             public string EndTime { get; set; }
         }
-        [HttpPost("QueryStatisticalOfDispatch1")]
-        public List<RTDStatistical> QueryStatisticalOfDispatch1([FromBody] ClassStatisticalCdt value)
+        [HttpPost("QueryStatisticalOfDispatch")]
+        public List<RTDStatistical> QueryStatisticalOfDispatch([FromBody] ClassStatisticalCdt value)
         {
             List<RTDStatistical> foo;
-            string funcName = "QueryStatisticalOfDispatch1";
+            string funcName = "QueryStatisticalOfDispatch";
             string tmpMsg = "";
             DataTable dt = null;
             DataTable dtTemp = null;
@@ -1159,7 +1132,6 @@ namespace RTDWebAPI.Controllers
             double dunit = 1;
             DateTime dtCurrUTCTime;
             DateTime dtLocTime;
-            bool isNightShift = false;
 
             try
             {
@@ -1182,15 +1154,13 @@ namespace RTDWebAPI.Controllers
                 if (value.CurrentDateTime.Equals(""))
                 {
                     dtLocTime = DateTime.Now;
-                    dtCurrUTCTime = DateTime.Now;
+                    dtCurrUTCTime = DateTime.UtcNow;
                 }
                 else
                 {
                     dtLocTime = DateTime.Parse(value.CurrentDateTime);
                     dtCurrUTCTime = DateTime.Parse(value.CurrentDateTime).AddHours(dHour);
                 }
-
-                isNightShift = _functionService.NightOrDay(value.CurrentDateTime);
 
                 dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
                 dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
@@ -1255,26 +1225,9 @@ namespace RTDWebAPI.Controllers
                                         dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
                                         break;
                                     case "shift":
-                                        //dHour = dHour - 4;
-                                        if (isNightShift)
-                                        {
-                                            if (dtLocTime.Hour >= 20)
-                                            {
-                                                dtStart = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                                                dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                                            }
-                                            else
-                                            {
-                                                dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                                                dtEnd = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                                            dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                                        }
-                                        
+                                        dHour = dHour - 4;
+                                        dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                                        dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
                                         break;
                                     default:
                                         dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
@@ -1282,22 +1235,14 @@ namespace RTDWebAPI.Controllers
                                         break;
                                 }
 
-                                sql = _BaseDataService.CalcStatisticalTimesFordiffZone(true, dtStart, dtEnd, value.Unit, type, dHour);
+                                sql = _BaseDataService.CalcStatisticalTimesFordiffZone(dtStart, value.Unit, type, dHour);
                                 dtTemp = _dbTool.GetDataTable(sql);
                                 iTimes1 = dtTemp.Rows.Count>0 ? int.Parse(dtTemp.Rows[0]["time"].ToString()) : 0;
-                                sql = _BaseDataService.CalcStatisticalTimesFordiffZone(false, dtStart, dtEnd, value.Unit, type, dHour);
+                                sql = _BaseDataService.CalcStatisticalTimesFordiffZone(dtEnd, value.Unit, type, dHour);
                                 dtTemp = _dbTool.GetDataTable(sql);
                                 iTimes2 = dtTemp.Rows.Count > 0 ? int.Parse(dtTemp.Rows[0]["time"].ToString()) : 0;
 
-                                if(value.Unit.ToLower().Equals("shift"))
-                                {
-                                    rtdStatistical.Times = iTimes1 - iTimes2;
-                                }
-                                else
-                                {
-                                    rtdStatistical.Times = int.Parse(row["Time"].ToString()) + iTimes1 - iTimes2;
-                                }
-                                
+                                rtdStatistical.Times = int.Parse(row["Time"].ToString()) + iTimes1 - iTimes2;
 
                                 foo.Add(rtdStatistical);
                             }
@@ -1332,174 +1277,8 @@ namespace RTDWebAPI.Controllers
 
             return foo;
         }
-        [HttpPost("QueryStatisticalOfDispatch")]
-        public List<RTDStatistical> QueryStatisticalOfDispatch([FromBody] ClassStatisticalCdt value)
-        {
-            List<RTDStatistical> foo;
-            string funcName = "QueryStatisticalOfDispatch";
-            string tmpMsg = "";
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-            foo = new List<RTDStatistical>();
-            DateTime dtStart;
-            DateTime dtEnd;
-            double dHour = 0;
-            double dunit = 1;
-            DateTime dtCurrUTCTime;
-            DateTime dtLocTime;
-            bool isNightShift = false;
-            RTDStatistical rtdStatistical;
-
-            try
-            {
-                if (value.Zone.Contains("-"))
-                {
-                    dunit = 1;
-                    dHour = dunit * double.Parse(value.Zone.Replace("-", ""));
-                }
-                else if (value.Zone.Contains("+"))
-                {
-                    dunit = -1;
-                    dHour = dunit * double.Parse(value.Zone.Replace("+", ""));
-                }
-                else
-                {
-                    dunit = -1;
-                    dHour = dunit * double.Parse(value.Zone);
-                }
-
-                if (value.CurrentDateTime.Equals(""))
-                {
-                    dtLocTime = DateTime.Now;
-                    dtCurrUTCTime = DateTime.Now;
-                }
-                else
-                {
-                    dtLocTime = DateTime.Parse(value.CurrentDateTime);
-                    dtCurrUTCTime = DateTime.Parse(value.CurrentDateTime).AddHours(dHour);
-                }
-
-                isNightShift = _functionService.NightOrDay(value.CurrentDateTime);
-
-                dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-                dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-
-                dHour = 0;
-
-                switch (value.Unit.ToLower())
-                {
-                    case "years":
-                        dtStart = DateTime.Parse(dtLocTime.ToString("yyyy") + "-01-01 00:00").AddHours(dHour);
-                        dtEnd = DateTime.Parse(dtLocTime.AddYears(1).ToString("yyyy") + "-01-01 00:00").AddHours(dHour);
-                        break;
-                    case "months":
-                        dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM") + "-01 00:00").AddHours(dHour);
-                        dtEnd = DateTime.Parse(dtLocTime.AddMonths(1).ToString("yyyy-MM") + "-01 00:00").AddHours(dHour);
-                        break;
-                    case "days":
-                        dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-                        dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-                        break;
-                    case "shift":
-                        //dHour = dHour - 4;
-                        if (isNightShift)
-                        {
-                            if (dtLocTime.Hour >= 20)
-                            {
-                                dtStart = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                                dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                            }
-                            else
-                            {
-                                dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                                dtEnd = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                            }
-                        }
-                        else
-                        {
-                            dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 12:00").AddHours(dHour - 4);
-                            dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour - 4);
-                        }
-
-                        break;
-                    default:
-                        dtStart = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-                        dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
-                        break;
-                }
-
-                sql = _BaseDataService.CalcStatisticalTimes(dtStart.ToString("yyyy/MM/dd HH:mm:ss"), dtEnd.ToString("yyyy/MM/dd HH:mm:ss"));
-                dtTemp = _dbTool.GetDataTable(sql);
-
-                List<string> lstType = new List<string> { "Total", "Success", "Failed" };
-                string currType = "";
-                int iTotal = 0;
-
-                foreach (string type in lstType)
-                {
-                    iTotal = 0;
-
-                    rtdStatistical = new RTDStatistical();
-                    rtdStatistical.Type = type;
-
-                    if (dtTemp.Rows.Count > 0)
-                    {
-                        foreach (DataRow dr1 in dtTemp.Rows)
-                        {
-                            switch(type)
-                            {
-                                case "Total":
-                                    iTotal = iTotal + int.Parse(dr1["TIMES"].ToString());
-
-                                    break;
-                                default:
-                                    if(dr1["STATUS"].ToString().Equals(type))
-                                    {
-                                        iTotal = iTotal + int.Parse(dr1["TIMES"].ToString());
-                                    }
-                                    break;
-                            }
-                        }
-
-                        rtdStatistical.Times = iTotal;
-                    }
-                    else
-                    {
-                        rtdStatistical.Times = 0;
-                    }
-
-                    foo.Add(rtdStatistical);
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-
-                }
-                else
-                {
-
-                }
-            }
-            catch (Exception ex)
-            {
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
         public class ClassStatisticalCdt
         {
-            public string StartDateTime { get; set; }
             public string CurrentDateTime { get; set; }
             public string Unit { get; set; }
             public string Zone { get; set; }
@@ -1657,20 +1436,12 @@ namespace RTDWebAPI.Controllers
             DataRow[] dr = null;
             string sql = "";
             string lotid = "";
-            string tableOrder = "";
-            string _keyOfEnv = "";
-            string _keyRTDEnv = "";
 
             try
             {
                 var jsonStringName = new JavaScriptSerializer();
                 var jsonStringResult = jsonStringName.Serialize(value);
                 _logger.Info(string.Format("Function:[{0}], WorkinProcess:{1}", funcName, jsonStringResult));
-
-                _keyRTDEnv = _configuration["RTDEnvironment:type"];
-                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _configuration["RTDEnvironment:type"]);
-                //"RTDEnvironment:commandsTable:PROD"
-                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
 
                 CommandId = value.CommandID;
                 if (CommandId.Equals(""))
@@ -1687,7 +1458,7 @@ namespace RTDWebAPI.Controllers
                     
                 }
 
-                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByCmdId(CommandId, tableOrder));
+                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByCmdId(CommandId));
                 dt = _dbTool.GetDataTable(sql);
                 dr = dt.Select();
 
@@ -1749,8 +1520,8 @@ namespace RTDWebAPI.Controllers
                     if (apiResult.Success)
                     {
                         // 更新狀態資料
-                        string CurrentTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                        if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("DELETE", CurrentTime, CommandId, tableOrder), out tmpMsg, true))
+                        string CurrentTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+                        if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("DELETE", CurrentTime, CommandId), out tmpMsg, true))
                         {
                             if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(CommandId), out tmpMsg, true))
                             {
@@ -1765,7 +1536,7 @@ namespace RTDWebAPI.Controllers
                                     }
                                 }
 
-                                if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId, tableOrder), out tmpMsg, true))
+                                if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId), out tmpMsg, true))
                                 {
                                     //Do Nothing
                                     foo.Success = true;
@@ -1848,17 +1619,6 @@ namespace RTDWebAPI.Controllers
                     else
                     {
                         foo = apiResult;
-
-                        if (foo.Message.Contains("InternalServerError"))
-                        {
-                            if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId, tableOrder), out tmpMsg, true))
-                            {
-                                if(tmpMsg.Equals(""))
-                                    tmpMsg = string.Format("Remove command failed {0}, Just delete RTD order.", CommandId);
-
-                                _logger.Debug(tmpMsg);
-                            }
-                        }
                     }
                 }
                 else
@@ -1901,7 +1661,6 @@ namespace RTDWebAPI.Controllers
             DataTable dtTemp = null;
             DataRow[] dr = null;
             string sql = "";
-            string tmpWorkGroup = "";
             IBaseDataService _BaseDataService = new BaseDataService();
 
             try
@@ -1911,46 +1670,14 @@ namespace RTDWebAPI.Controllers
                 if (dt.Rows.Count > 0)
                 {
                     Boolean isManualMode = dt.Rows[0]["manualmode"].ToString().Equals("1") ? true : false;
-                    Boolean _expired = dt.Rows[0]["expired"].ToString().Equals("1") ? true : false;
-                    Boolean _effective = dt.Rows[0]["effective"].ToString().Equals("1") ? true : false;
                     string descTemp = isManualMode.Equals(true) ? "Manual" : "Auto";
-                    string _args = "";
-                    tmpWorkGroup = dt.Rows[0]["workgroup"].ToString();
-
-                    if (_expired)
+                    if (!value.ReworkMode.Equals(isManualMode))
                     {
-                        if (!value.ReworkMode.Equals(isManualMode))
-                        {
-                            tmpMsg = string.Format("Equipment [%s] been change to %s", value.EquipID, descTemp);
+                        tmpMsg = string.Format("Equipment [%s] been change to %s", value.EquipID, descTemp);
 
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.ManualModeSwitch(value.EquipID, value.ReworkMode), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-                        }
-                    }
-                    else 
-                    {
-                        if (!value.ReworkMode.Equals(isManualMode))
-                        {
-                            tmpMsg = string.Format("Equipment [%s] been change to %s", value.EquipID, descTemp);
-
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.ManualModeSwitch(value.EquipID, value.ReworkMode), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-                        }
-
-                        if (isManualMode)
-                        {
-                            if(!_expired)
-                            {
-                                _args = string.Format("{0},{1},{2},{3}", "expired", value.EquipID, "UI", "1");
-                                sql = _BaseDataService.UpdateEquipReserve(_args);
-                                _logger.Debug(sql);
-                                _dbTool.SQLExec(sql, out tmpMsg, true);
-                                if (!tmpMsg.Equals(""))
-                                    _logger.Debug(tmpMsg);
-                            }
-                        }
+                        //// 更新狀態
+                        _dbTool.SQLExec(_BaseDataService.ManualModeSwitch(value.EquipID, value.ReworkMode), out tmpMsg, true);
+                        _logger.Debug(tmpMsg);
                     }
                 }
                 else
@@ -1966,21 +1693,6 @@ namespace RTDWebAPI.Controllers
                         State = "OK",
                         Message = tmpMsg
                     };
-
-                    if(value.ReworkMode.Equals(true))
-                    {
-                        //"Position": "202310131411001"
-                        dtTemp = _dbTool.GetDataTable(_BaseDataService.QueryCarrierOnRack(tmpWorkGroup, value.EquipID));
-
-                        if (dtTemp.Rows.Count > 0)
-                        {
-                            foreach (DataRow row in dtTemp.Rows)
-                            {
-                                sql = string.Format(_BaseDataService.UpdateTableLotInfoReset(row["lot_id"].ToString()));
-                                _dbTool.SQLExec(sql, out tmpMsg, true);
-                            }
-                        }
-                    }
                 }
                 else
                 {
@@ -2028,8 +1740,6 @@ namespace RTDWebAPI.Controllers
             DateTime dtEffective;
             DateTime dtExpired;
             string reserveBy = "";
-            string _args = "";
-            DateTime dtCurrent = DateTime.Now;
 
             try
             {
@@ -2078,27 +1788,6 @@ namespace RTDWebAPI.Controllers
                         conditions = string.Format("{0},{1},{2},{3},{4}", "SETTIME", value.EquipID, value.ReserveBy, value.DateTimeEffective, value.DateTimeExpired);
                         sql = _BaseDataService.UpdateEquipReserve(conditions);
                         _dbTool.SQLExec(sql, out tmpMsg, true);
-                    }
-
-                    //CheckReserveTimeByEqpID
-                    dtTemp = _dbTool.GetDataTable(_BaseDataService.CheckReserveTimeByEqpID(value.EquipID));
-                    if (dtTemp.Rows.Count > 0)
-                    {
-                        dtCurrent = DateTime.Now;
-                        _logger.Debug(string.Format("{0}--reservestart--{1}-------------", dtCurrent, value.EquipID));
-
-                        sql = _BaseDataService.ManualModeSwitch(value.EquipID, true);
-                        _logger.Debug(sql);
-                        _dbTool.SQLExec(sql, out tmpMsg, true);
-                        if (!tmpMsg.Equals(""))
-                            _logger.Debug(tmpMsg);
-
-                        _args = string.Format("{0},{1},{2},{3}", "effective", value.EquipID, "RTD", "1");
-                        sql = _BaseDataService.UpdateEquipReserve(_args);
-                        _logger.Debug(sql);
-                        _dbTool.SQLExec(sql, out tmpMsg, true);
-                        if (!tmpMsg.Equals(""))
-                            _logger.Debug(tmpMsg);
                     }
                 }
                 else
@@ -2191,919 +1880,5 @@ namespace RTDWebAPI.Controllers
 
             return strResult;
         }
-        public class ClassCancelReserve
-        {
-            public string EquipID { get; set; }
-            public string ReserveBy { get; set; }
-        }
-
-        [HttpPost("CancelReserveTime")]
-        public APIResult CancelReserveTime([FromBody] ClassCancelReserve value)
-        {
-            //"Position": "202310131447002"
-            APIResult foo;
-            string funcName = "CancelReserveTime";
-            string tmpMsg = "";
-            string strResult = "";
-            DataTable dt = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-            Boolean _effective = false;
-            Boolean _expired = false;
-            string conditions = "";
-
-            try
-            {
-                //// 查詢資料
-                dt = _dbTool.GetDataTable(_BaseDataService.QueryReserveStateByEquipid(value.EquipID));
-
-                if (dt.Rows.Count > 0)
-                {
-                    _expired = dt.Rows[0]["expired"].ToString().Equals("0") ? false : true;
-
-                    if(!_expired)
-                    {
-                        conditions = string.Format("{0},{1},{2},{3}", "EXPIRED", value.EquipID, value.ReserveBy,"1");
-                        sql = _BaseDataService.UpdateEquipReserve(conditions);
-                        _dbTool.SQLExec(sql, out tmpMsg, true);
-                    }
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = false,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-
-        [HttpPost("ResetLotPriority")]
-        public APIResult ResetLotPriority([FromBody] ClassLotPriority value)
-        {
-            APIResult foo;
-            string funcName = "ResetLotPriority";
-            string tmpMsg = "";
-            int iExecuteMode = 1;
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-
-            try
-            {
-                try
-                {
-                    if (value.LotID.Equals(""))
-                    {
-                        tmpMsg = "LotID can not be empty.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    sql = _BaseDataService.SelectTableLotInfoByLotid(value.LotID);
-                    dt = _dbTool.GetDataTable(sql);
-
-                    if (dt.Rows.Count <= 0)
-                    {
-                        tmpMsg = "LotID is not Exist.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    if(value.NewPriority <= 0 && value.NewPriority >= 100)
-                    {
-                        tmpMsg = "Priority only between 1 and 99.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-                    }
-
-                    sql = _BaseDataService.UpdatePriorityByLotid(value.LotID, value.NewPriority);
-                    _dbTool.SQLExec(sql, out tmpMsg, true);
-                }
-                catch (Exception ex)
-                {
-                    
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = true,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-        public class ClassLotPriority
-        {
-            public string LotID { get; set; }
-            public int NewPriority { get; set; }
-        }
-
-        [HttpPost("ManualCheckIn")]
-        public APIResult ManualCheckIn([FromBody] ManualCheckIn value)
-        {
-            APIResult foo;
-            APIResult tmpResult;
-            string funcName = "ManualCheckIn";
-            string tmpMsg = "";
-            int iExecuteMode = 1;
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-            List<string> tmpp = new List<string>();
-            string webServiceMode = "soap11";
-            string webUrl = "";
-            string apiFormat = "";
-            string apiFunc = "";
-
-            JCETWebServicesClient jcetWebServiceClient = new JCETWebServicesClient();
-            JCETWebServicesClient.ResultMsg resultMsg = new JCETWebServicesClient.ResultMsg();
-            JObject oResp = null;
-
-            string tmpCarrierID = "";
-            string tmpLotID = "";
-            WebServiceResponse webServiceResp;
-
-            try
-            {
-                webServiceMode = _configuration["WebService:CIMAPIMode"] is null ? "soap11" : _configuration["WebService:CIMAPIMode"];
-                webUrl = _configuration["WebService:CIMAPP"] is null ? "http://scscimapp006.jcim-sg.jsg.jcetglobal.com/C10_RTD_API" : _configuration["WebService:CIMAPP"];
-
-                try
-                {
-                    try {
-                        tmpCarrierID = value.CarrierID is not null ? value.CarrierID : "";
-                        tmpLotID = value.LotID is not null ? value.LotID : "";
-
-                        if (value.PortID.Equals(""))
-                        {
-                            tmpMsg = "Must provide Equipment PortID.";
-
-                            foo = new APIResult()
-                            {
-                                Success = false,
-                                State = "NG",
-                                Message = tmpMsg
-                            };
-
-                            return foo;
-                        }
-
-                        if (!tmpCarrierID.Equals("") && tmpLotID.Equals(""))
-                        {
-                            try
-                            {
-                                dt = _dbTool.GetDataTable(_BaseDataService.QueryCarrierInfoByCarrierId(tmpCarrierID));
-                                if (dt.Rows.Count > 0)
-                                {
-                                    //iPreTransMode = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
-                                    tmpLotID = dt.Rows[0]["lot_id"] is not null ? dt.Rows[0]["lot_id"].ToString() : "";
-                                }
-                            } catch(Exception ex) { }
-                        }
-
-                        if (tmpCarrierID.Equals(""))
-                        {
-                            if (tmpLotID.Equals(""))
-                            {
-                                tmpMsg = "Must Keyin CarrierID or LotID.";
-
-                                foo = new APIResult()
-                                {
-                                    Success = false,
-                                    State = "NG",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                        }
-                        else
-                        {
-                            if (value.UserID.Equals(""))
-                            {
-                                tmpMsg = "Must Keyin UserID.";
-
-                                foo = new APIResult()
-                                {
-                                    Success = false,
-                                    State = "NG",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                            if (value.Pwd.Equals(""))
-                            {
-                                tmpMsg = "Must Keyin password.";
-
-                                foo = new APIResult()
-                                {
-                                    Success = false,
-                                    State = "NG",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                        }
-                    } catch (Exception ex){
-                        tmpMsg = string.Format("Exception: {0}", ex.Message);
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    try
-                    {
-                        jcetWebServiceClient._url = ""; //CIMAPP006 會依function自動生成url
-                        jcetWebServiceClient.Logger = _logger;
-                        resultMsg = new JCETWebServicesClient.ResultMsg();
-                        apiFunc = "CheckEcert";
-                        apiFormat = _configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())] is null ? "" : _configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())];
-                        resultMsg = jcetWebServiceClient.CIMAPP006("CheckEcert", webUrl, apiFormat, webServiceMode, value.PortID, value.UserID, value.Pwd, tmpLotID);
-                        string result3 = resultMsg.retMessage.Trim('\"');
-                        string tmpCert = "";
-                        string resp_Code = "";
-                        string resp_Msg = "";
-                        string result4 = "";
-
-                        //result4 = "\"{\"Status\": \"Success\",\"Code\": 200,\"Msg\": \"SUCCESS\"}\"";
-                        //result4 = "{{\"\"{\"Status\":\"Failure\",\"Code\":201,\"Msg\":\"No Course Code found\"}\"";
-                        //result3 = result4.Trim('\"');
-
-                        _logger.Info(string.Format("CIMAPP006, [{0}][{1}][{2}][{3}]", apiFunc, resultMsg.status, resultMsg.retMessage, result3));
-
-                        webServiceResp = new WebServiceResponse();
-
-                        if (resultMsg.status)
-                        {
-                            //JsonReader reader = new JsonTextReader(new StringReader(resultMsg.retMessage));
-
-                            //JObject objResp = (JObject)JsonConvert.DeserializeObject(resultMsg.retMessage);
-                            try {
-                                result3 = "{\"Status\": \"Success\",\"Code\": 200,\"Msg\": \"SUCCESS\"}";
-                                _logger.Info(string.Format("CIMAPP006, [{0}][{1}]", "JsonConvert", result3));
-                                webServiceResp = JsonConvert.DeserializeObject<WebServiceResponse>(result3);
-
-                                _logger.Info(string.Format("CIMAPP006, [{0}][{1}]", apiFunc, string.Format("Content:{0}{1}", webServiceResp.Code, webServiceResp.Msg)));
-                                //oResp = JObject.Parse(resultMsg.retMessage);
-                            }
-                            catch (Exception ex) {
-                                _logger.Info(string.Format("CIMAPP006 [{0}][{1}]", apiFunc, string.Format("[Exception:{0} / {1}]", result3, ex.Message)));
-                                string tmp = "";
-
-                                if (result3.IndexOf("SUCCESS") > 0)
-                                {
-                                    webServiceResp.Status = "SUCCESS";
-                                    webServiceResp.Code = "200";
-                                    tmp = "";
-                                    tmp = result3.Split("Msg")[1].Split(':')[1].Split('}')[0];
-                                    webServiceResp.Msg = tmp.Trim('"');
-                                }
-                                else
-                                {
-                                    tmp = result3.Split("Status")[1].Split(':')[1].Split(',')[0];
-                                    webServiceResp.Status = tmp.Trim('"');
-                                    tmp = "";
-                                    tmp = result3.Split("Code")[1].Split(':')[1].Split(',')[0];
-                                    webServiceResp.Code = tmp.Trim('"');
-                                    tmp = "";
-                                    tmp = result3.Split("Msg")[1].Split(':')[1].Split('}')[0];
-                                    webServiceResp.Msg = tmp.Trim('"');
-                                }
-                            }
-                            
-                        }
-                        else
-                        {
-                            tmpMsg = string.Format("An unknown exception occurred in the web service. Please call IT-CIM deportment. [Exception][{0}][{1}]", apiFunc, result3);
-
-                            webServiceResp.Status = "FAILURE";
-                            webServiceResp.Code = "000";
-                            webServiceResp.Msg = tmpMsg;
-
-                            foo = new APIResult()
-                            {
-                                Success = false,
-                                State = "NG",
-                                Message = tmpMsg
-                            };
-
-                            return foo;
-                        }
-
-                        if (webServiceResp is not null)
-                        {
-                            if (webServiceResp.Status.ToUpper().Equals("SUCCESS"))
-                            {
-                                resp_Code = webServiceResp.Code;
-                                resp_Msg = webServiceResp.Msg;
-
-                                if (_functionService.CheckMCSStatus(_dbTool, _logger))
-                                {
-
-                                    tmpp.Add(value.CarrierID);
-                                    tmpp.Add(tmpLotID);
-                                    tmpp.Add(value.PortID);
-                                    tmpp.Add(value.Quantity.ToString());
-                                    tmpp.Add(value.Total.ToString());
-                                    tmpp.Add(value.UserID);
-                                    tmpp.Add(value.Pwd);
-                                    tmpResult = _functionService.SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "ManualCheckIn", tmpp);
-                                    tmpMsg = tmpResult.Message;
-                                    //sql = _BaseDataService.UpdatePriorityByLotid(value.LotID, value.NewPriority);
-                                    //_dbTool.SQLExec(sql, out tmpMsg, true);
-                                }
-                                else
-                                {
-                                    _logger.Info(string.Format("MCS Status incorrect, [{0}] not success. [{1}]", "ManualCheckIn", value.CarrierID));
-                                }
-
-                                foo = new APIResult()
-                                {
-                                    Success = true,
-                                    State = "OK",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                            else if (webServiceResp.Status.ToUpper().Equals("FAILURE"))
-                            {
-                                resp_Code = webServiceResp.Code;
-                                resp_Msg = webServiceResp.Msg;
-
-                                tmpMsg = string.Format("This account has no permissions. [Code:{0}, Msg:{1}]", resp_Code, resp_Msg);
-
-                                foo = new APIResult()
-                                {
-                                    Success = false,
-                                    State = "NG",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                            else
-                            {
-                                resp_Code = webServiceResp.Code;
-                                resp_Msg = webServiceResp.Msg;
-
-                                tmpMsg = string.Format("Unknow Issue. [Code:{0}, Msg:{1}]", resp_Code, resp_Msg);
-
-                                foo = new APIResult()
-                                {
-                                    Success = false,
-                                    State = "NG",
-                                    Message = tmpMsg
-                                };
-
-                                return foo;
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        tmpMsg = ex.Message;
-                        _logger.Info(string.Format("CIMAPP006, [{0}][{1}]", "Exception ex", tmpMsg));
-                    }   
-                }
-                catch (Exception ex)
-                {
-                    tmpMsg = ex.Message;
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = true,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-
-        [HttpPost("QueryHistoryCmds")]
-        public List<HisCommandStatus> QueryHistoryCmds([FromBody] ClassStatisticalCdt value)
-        {
-            List<HisCommandStatus> foo;
-            string funcName = "QueryHistoryCmds";
-            string tmpMsg = "";
-            DataTable dt = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-            foo = new List<HisCommandStatus>();
-
-            try
-            {
-                //dt = _dbTool.GetDataTable(_BaseDataService.GetHistoryCommands(value.CurrentDateTime, value.Unit, value.Zone));
-
-                foo = _functionService.GetHistoryCommands(_dbTool, _alarmDetail, value.StartDateTime, value.CurrentDateTime, value.Unit, value.Zone);
-
-            }
-            catch (Exception ex)
-            {
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-        [HttpPost("SetPreTransByWorkgroup")]
-        public APIResult SetPreTransByWorkgroup([FromBody] ClassWorkgroup value)
-        {
-            APIResult foo;
-            string funcName = "SetPreTransByWorkgroup";
-            string tmpMsg = "";
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-
-            try
-            {
-                dt = _dbTool.GetDataTable(_BaseDataService.QueryWorkgroupSet(value.Workgroup));
-
-                if (dt.Rows.Count > 0)
-                {
-                    //iPreTransMode = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
-                    Boolean enablePreTrans = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
-
-                    if (enablePreTrans)
-                    {
-                        if (value.Set.Equals(0))
-                        {
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.SetResetPreTransfer(value.Workgroup,false), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-                        }
-                    }
-                    else
-                    {
-                        if (value.Set.Equals(1))
-                        {
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.SetResetPreTransfer(value.Workgroup, true), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-                        }
-                    }
-                }
-                else
-                {
-                    tmpMsg = string.Format("Workgroup {0} not exist.", value.Workgroup);
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = true,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-        public class ClassWorkgroup
-        {
-            public string Workgroup { get; set; }
-            public int Set { get; set; }
-        }
-        [HttpPost("EnableEquipmentPort")]
-        public APIResult EnableEquipmentPort([FromBody] ClassEquipPort value)
-        {
-            APIResult foo;
-            string funcName = "EnableEquipmentPort";
-            string tmpMsg = "";
-            string tmpMsg2 = "";
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            string _userid = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-
-            try
-            {
-                dt = _dbTool.GetDataTable(_BaseDataService.SelectTableEQP_Port_SetByPortId(value.PortID));
-
-                if (dt.Rows.Count > 0)
-                {
-                    //iPreTransMode = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
-                    Boolean enableEQPPort = dt.Rows[0]["DISABLE"].ToString().Equals("1") ? true : false;
-
-                    //_userid = value.UserID.Equals("") ? "-----" : value.UserID;
-
-                    if (enableEQPPort)
-                    {
-                        if (value.Set.Equals(0))
-                        {
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.EnableEqpipPort(value.PortID, false), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-
-                            tmpMsg2 = string.Format("Equipment Port {0} been enabled.[{1}][{2}]", value.PortID, value.Set, _userid);
-                        }
-                    }
-                    else
-                    {
-                        if (value.Set.Equals(1))
-                        {
-                            //// 更新狀態
-                            _dbTool.SQLExec(_BaseDataService.EnableEqpipPort(value.PortID, true), out tmpMsg, true);
-                            _logger.Debug(tmpMsg);
-
-                            tmpMsg2 = string.Format("Equipment Port {0} been disable.[{1}][{2}]", value.PortID, value.Set, _userid);
-                        }
-                    }
-
-                    if (!tmpMsg2.Equals(""))
-                        _logger.Debug(tmpMsg2);
-                }
-                else
-                {
-                    tmpMsg = string.Format("Equipment Port {0} not exist.", value.PortID);
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg2
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg2
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = true,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-        public class ClassEquipPort
-        {
-            public string PortID { get; set; }
-            public int Set { get; set; }
-        }
-        public class ClassEquipPort2
-        {
-            public string PortID { get; set; }
-            public int Set { get; set; }
-            public string UserID { get; set; }
-        }
-
-
-        [HttpPost("ResetRTDStateByLot")]
-        public APIResult ResetRTDStateByLot([FromBody] ClassResetRTDStateByLot value)
-        {
-            APIResult foo;
-            string funcName = "ResetRTDStateByLot";
-            string tmpMsg = "";
-            int iExecuteMode = 1;
-            DataTable dt = null;
-            DataTable dtTemp = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-
-            try
-            {
-                try
-                {
-                    if (value.LotID.Equals(""))
-                    {
-                        tmpMsg = "LotID can not be empty.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    if (value.Username.Equals(""))
-                    {
-                        tmpMsg = "User name can not be empty.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    sql = _BaseDataService.SelectTableLotInfoByLotid(value.LotID);
-                    dt = _dbTool.GetDataTable(sql);
-
-                    if (dt.Rows.Count <= 0)
-                    {
-                        tmpMsg = "LotID is not Exist.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = tmpMsg
-                        };
-
-                        return foo;
-                    }
-
-                    sql = _BaseDataService.UpdateTableLotInfoReset(value.LotID);
-                    _dbTool.SQLExec(sql, out tmpMsg, true);
-
-                    if (!tmpMsg.Equals(""))
-                    {
-                        tmpMsg = "Reset Lot [{0}] Info Failed.";
-
-                        foo = new APIResult()
-                        {
-                            Success = false,
-                            State = "NG",
-                            Message = string.Format(tmpMsg, value.LotID)
-                        };
-
-                        return foo;
-                    }
-                }
-                catch (Exception ex)
-                {
-
-                }
-
-                if (tmpMsg.Equals(""))
-                {
-                    foo = new APIResult()
-                    {
-                        Success = true,
-                        State = "OK",
-                        Message = tmpMsg
-                    };
-                }
-                else
-                {
-                    foo = new APIResult()
-                    {
-                        Success = false,
-                        State = "NG",
-                        Message = tmpMsg
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                foo = new APIResult()
-                {
-                    Success = true,
-                    State = "NG",
-                    Message = ex.Message
-                };
-            }
-            finally
-            {
-                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return foo;
-        }
-        public class ClassResetRTDStateByLot
-        {
-            public string LotID { get; set; }
-            public string Username { get; set; }
-        }
-
-        [HttpGet("QueryRtdAlarmHistory")]
-        public ActionResult<String> QueryRtdAlarmHistory([FromBody] ClassQueryRTDAlarm value)
-        {
-
-            string funcName = "QueryRtdAlarmHistory";
-            string tmpMsg = "";
-            string strResult = "";
-            DataTable dt = null;
-            DataRow[] dr = null;
-            string sql = "";
-            IBaseDataService _BaseDataService = new BaseDataService();
-
-            try
-            {
-                //// 查詢資料
-                dt = _dbTool.GetDataTable(_BaseDataService.QueryAllRtdAlarm());
-
-                if (dt.Rows.Count > 0)
-                {
-                    strResult = JsonConvert.SerializeObject(dt);
-                }
-            }
-            catch (Exception ex)
-            {
-                return strResult;
-            }
-            finally
-            {
-                if (dt is not null)
-                {
-                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
-                }
-            }
-
-            return strResult;
-        }
-    }
-    public class ClassTimeInterval
-    {
-        public string StartTime { get; set; }
-        public string EndTime { get; set; }
     }
 }
