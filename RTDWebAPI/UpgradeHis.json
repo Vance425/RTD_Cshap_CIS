@@ -1,0 +1,70 @@
+{
+  "23Sep2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.0922.1.0.1",
+      "Upgrade.Item": "QueryOrderWhenOvertime",
+      "Desc": "Auto delete order when overtime.",
+      "Position": "202309221312001"
+    },
+    "RTD.V1.2": {
+      "Version.No": "1.0.23.0922.1.0.1",
+      "Upgrade.Item": "AutoResetCarrierReserveState",
+      "Desc": "Auto reset carrier state reserve when carrier online and no order.",
+      "Position": "202309221312002"
+    }
+  },
+  "12Sep2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.1012.1.0.1",
+      "Upgrade.Item": "Fix issue ",
+      "Desc": "Fixed BG Loadport 3 issue, no empty cassette do not build unload commands.",
+      "Position": "202310121423001"
+    }
+  },
+  "13Sep2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.1013.1.0.1",
+      "Upgrade.Item": "Refresh Available Equipment list",
+      "Desc": "Refresh Available Equipment list,  if machine come from manual to auto .",
+      "Position": "202310131411001"
+    },
+    "RTD.V1.2": {
+      "Version.No": "1.0.23.1013.1.0.2",
+      "Upgrade.Item": "Add cancel reservation option",
+      "Desc": "Add cancel reservation option to existing RTD reservation function.",
+      "Position": "202310131447002"
+    }
+  },
+  "17Sep2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.1017.1.0.1",
+      "Upgrade.Item": " priority by workgroup",
+      "Desc": "Priority by workgroup.",
+      "Position": "202310171805001"
+    }
+  },
+  "31Sep2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.1031.1.0.1",
+      "Upgrade.Item": "Result BG's' A/B loadport when unload will lose last carrier id at loadport issue.",
+      "Desc": "BG's loadport 3 unload will lose last carrier id issue and bind issue.",
+      "Position": "202310311415001"
+    }
+  },
+  "16Nov2023": {
+    "RTD.V1.1": {
+      "Version.No": "1.0.23.1116.1.0.1",
+      "Upgrade.Item": "Do not unlock the port id.",
+      "Desc": "When Equipment Port State Change to 4 (Reday to load), order still have order to this portid. RTD will not unlock it.",
+      "Position": "202311161021001"
+    }
+  },
+  "03Jan2024": {
+    "RTD.V1.2": {
+      "Version.No": "1.0.24.0103.1.0.0",
+      "Upgrade.Item": "Add User Permission.",
+      "Desc": "Add User Permission",
+      "Position": "202401031319001"
+    }
+  }
+}

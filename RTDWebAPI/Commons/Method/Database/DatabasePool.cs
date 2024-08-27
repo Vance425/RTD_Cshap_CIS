@@ -7,6 +7,8 @@ using System.Reflection;
 using System.Configuration;
 using System.Data.OracleClient;
 using System.Data.SqlClient;
+using NLog;
+using Oracle.ManagedDataAccess.Client;
 
 namespace RTDWebAPI.Commons.Method.Database
 {
@@ -24,6 +26,9 @@ namespace RTDWebAPI.Commons.Method.Database
                                                       //        /// </summary>
 
         private bool isConnected = false;
+
+        public ILogger logger { get; set; }
+        private string tmpMsg = "";
 
         public static void RegisterDataProviders()
         {
@@ -108,9 +113,9 @@ namespace RTDWebAPI.Commons.Method.Database
                 isConnected = true;
                 return true;
             }
-            catch (Exception e)
+            catch (OracleException e)
             {
-                msg = e.Message;
+                msg = string.Format("Message[{0}], StackTrace[{1}]", e.Message, e.StackTrace);
                 return false;
             }
         }
@@ -233,6 +238,9 @@ namespace RTDWebAPI.Commons.Method.Database
             {
                 CheckDBException(e);
 
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "GetDataSet", e.Message);
+                if (logger is not null)
+                    logger.Error(tmpMsg);
                 throw;
             }
 
@@ -295,6 +303,10 @@ namespace RTDWebAPI.Commons.Method.Database
             catch (Exception e)
             {
                 CheckDBException(e);
+
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "GetDataTable1", e.Message);
+                if (logger is not null)
+                    logger.Error(tmpMsg);
                 throw;
             }
 
@@ -327,6 +339,12 @@ namespace RTDWebAPI.Commons.Method.Database
             {
                 CheckDBException(e);
                 //DisConnet(out msg);
+                tmpMsg = string.Format("[{0}][{1}][{2}][{3}]", "DBAccess", "GetDataTable2", e.Message, sql);
+                if(logger is not null)
+                    logger.Error(tmpMsg);
+
+                dbConnection.Close();
+                dbConnection.Dispose();
                 throw;
             }
 
@@ -388,6 +406,7 @@ namespace RTDWebAPI.Commons.Method.Database
                 dbTrans = null;
                 dbDcmd.Dispose();
                 dbConnection.Close();
+                dbConnection.Dispose();
                 isConnected = false;
                 CheckDBException(e);
                 //DisConnet(out msg);
@@ -444,6 +463,7 @@ namespace RTDWebAPI.Commons.Method.Database
                 dbTrans = null;
                 dbDcmd.Dispose();
                 dbConnection.Close();
+                dbConnection.Dispose();
                 isConnected = false;
                 CheckDBException(e);
                 RunSqlException ex = new RunSqlException(e.Message + " \r\n;SQL= " + errSql, e);
@@ -475,7 +495,10 @@ namespace RTDWebAPI.Commons.Method.Database
 
                 if (dbTrans == null)
                 {
-                    dbTrans = dbConnection.BeginTransaction();
+                    try
+                    {
+                        dbTrans = dbConnection.BeginTransaction();
+                    }catch(Exception ex) { }
                 }
 
                 dbDcmd.Connection = dbConnection;
@@ -502,6 +525,14 @@ namespace RTDWebAPI.Commons.Method.Database
             catch (DbException e)
             {
                 //this.KeepTrans = false;
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "SQLExec1", e.Message);
+                if (logger is not null)
+                {
+                    if (!errSql.Equals(""))
+                        tmpMsg = string.Format("{0}[{1}]", tmpMsg, errSql);
+                    logger.Error(tmpMsg);
+                }
+
                 dbDcmd.Transaction.Rollback();
                 dbDcmd.Transaction = null;
                 dbTrans = null;
@@ -510,6 +541,8 @@ namespace RTDWebAPI.Commons.Method.Database
                 errSql = e.Message + errSql;
                 //throw new RunSqlException(errSql, e);
                 //DisConnet(out msg);
+                dbConnection.Close();
+                dbConnection.Dispose();
                 return false;
             }
         }
@@ -559,12 +592,16 @@ namespace RTDWebAPI.Commons.Method.Database
             }
             catch (DbException e)
             {
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "SQLExec2", e.Message);
+                if (logger is not null)
+                    logger.Error(tmpMsg);
                 //this.KeepTrans = false;
                 dbDcmd.Transaction.Rollback();
                 dbDcmd.Transaction = null;
                 dbTrans = null;
                 dbDcmd.Dispose();
                 dbConnection.Close();
+                dbConnection.Dispose();
                 isConnected = false;
                 CheckDBException(e);
                 //DisConnet(out msg);
@@ -617,6 +654,10 @@ namespace RTDWebAPI.Commons.Method.Database
             }
             catch (Exception e)
             {
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "ExecutePorcedure1", e.Message);
+                if (logger is not null)
+                    logger.Error(tmpMsg);
+
                 dbDcmd.Transaction.Rollback();
                 dbDcmd.Transaction = null;
                 dbTrans = null;
@@ -660,6 +701,10 @@ namespace RTDWebAPI.Commons.Method.Database
                 }
                 catch (Exception e)
                 {
+                    tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "ExecutePorcedure2", e.Message);
+                    if (logger is not null)
+                        logger.Error(tmpMsg);
+
                     dbDcmd.Transaction.Rollback();
                     dbDcmd.Transaction = null;
                     dbTrans = null;
@@ -726,6 +771,7 @@ namespace RTDWebAPI.Commons.Method.Database
                     dbTrans.Dispose();
                     dbTrans = null;
                     dbConnection.Close();
+                    dbConnection.Dispose();
                     isConnected = false;
 
                 }
@@ -734,11 +780,15 @@ namespace RTDWebAPI.Commons.Method.Database
             }
             catch (Exception e)
             {
+                tmpMsg = string.Format("[{0}][{1}][{2}]", "DBAccess", "UpdateDataSet", e.Message);
+                if (logger is not null)
+                    logger.Error(tmpMsg);
                 //this.KeepTrans = false;
                 dbTrans.Rollback();     //交易失敗時，取消交易
                 dbTrans.Dispose();
                 dbTrans = null;
                 dbConnection.Close();
+                dbConnection.Dispose();
                 isConnected = false;
                 CheckDBException(e);
                 throw;

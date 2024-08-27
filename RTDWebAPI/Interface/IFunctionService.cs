@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json.Linq;
 using NLog;
 using RTDWebAPI.APP;
 using RTDWebAPI.Commons.DataRelated.SQLSentence;
@@ -13,16 +14,17 @@ namespace RTDWebAPI.Interface
 {
     public interface IFunctionService
     {
-        bool AutoCheckEquipmentStatus(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue);
-        bool AbnormalyEquipmentStatus(DBTool _dbTool, ILogger _logger, bool DebugMode, ConcurrentQueue<EventQueue> _evtQueue, out List<NormalTransferModel> _lstNormalTransfer);
+        bool AutoCheckEquipmentStatus(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue);
+        bool AbnormalyEquipmentStatus(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, bool DebugMode, ConcurrentQueue<EventQueue> _evtQueue, out List<NormalTransferModel> _lstNormalTransfer);
         bool CheckLotInfo(DBTool _dbTool, IConfiguration _configuration, ILogger _logger);
         bool SyncEquipmentData(DBTool _dbTool);
         bool CheckLotCarrierAssociate(DBTool _dbTool, ILogger _logger);
-        bool CheckLotEquipmentAssociate(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue);
-        bool UpdateEquipmentAssociateToReady(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue);
+        bool CheckLotEquipmentAssociate(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue);
+        bool UpdateEquipmentAssociateToReady(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue);
         bool SentDispatchCommandtoMCS(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, List<string> ListCmds);
         APIResult SentCommandtoMCS(IConfiguration _configuration, ILogger _logger, List<string> agrs);
-        APIResult SentCommandtoMCSByModel(IConfiguration _configuration, ILogger _logger, string _model, List<string> agrs);
+        bool SentTransferCommandtoToMCS(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, TransferList ListCmds, out string _tmpMsg);
+        APIResult SentCommandtoMCSByModel(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _model, List<string> agrs);
         APIResult SentAbortOrCancelCommandtoMCS(IConfiguration _configuration, ILogger _logger, int iRemotecmd, string _commandId);
         string GetAuthrizationTokenfromMCS(IConfiguration _configuration);
         string GetLotIdbyCarrier(DBTool _dbTool, string _carrierId, out string errMsg);
@@ -30,7 +32,9 @@ namespace RTDWebAPI.Interface
         List<string> CheckAvailableQualifiedTesterMachine(IConfiguration _configuration, ILogger _logger, string _username, string _password, string _lotId);
         bool BuildTransferCommands(DBTool _dbTool, IConfiguration configuration, ILogger _logger, bool DebugMode, EventQueue _oEventQ, Dictionary<string, string> _threadControll, List<string> _lstEquipment, out List<string> _arrayOfCmds);
         bool CreateTransferCommandByPortModel(DBTool _dbTool, IConfiguration configuration, ILogger _logger, bool DebugMode, string _Equip, string _portModel, EventQueue _oEventQ, out List<string> _arrayOfCmds);
-        bool CreateTransferCommandByTransferList(DBTool _dbTool, ILogger _logger, TransferList _transferList, out List<string> _arrayOfCmds);
+        bool CreateTransferCommandByTransferList(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, TransferList _transferList, out List<string> _arrayOfCmds);
+        DataTable GetAvailableCarrier(DBTool _dbTool, string _carrierType, bool _isFull, string _RTDEnv);
+        DataTable GetAvailableCarrier2(DBTool _dbTool, string _carrierType, bool _isFull, string _RTDEnv);
         string GetLocatePort(string _locate, int _portNo, string _locationType);
         double TimerTool(string unit, string lastDateTime);
         double TimerTool(string unit, string startDateTime, string lastDateTime);
@@ -40,6 +44,7 @@ namespace RTDWebAPI.Interface
         bool ThreadLimitTraffice(Dictionary<string, string> _threadCtrl, string key, double _time, string _timeUnit, string _symbol);
         bool AutoAssignCarrierType(DBTool _dbTool, out string tmpMessage);
         bool AutoSentInfoUpdate(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage);
+        bool AutoSentInfoUpdateForSTK(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage);
         bool AutoBindAndSentInfoUpdate(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage);
         bool AutoUpdateRTDStatistical(DBTool _dbTool, out string tmpMessage);
         bool CallRTDAlarm(DBTool _dbTool, int _alarmCode, string[] argv);
@@ -60,5 +65,16 @@ namespace RTDWebAPI.Interface
         bool CommandStatusUpdate(DBTool _dbTool, IConfiguration _configuration, CommandStatusUpdate value, ILogger _logger);
         bool EquipmentPortStatusUpdate(DBTool _dbTool, IConfiguration _configuration, AEIPortInfo value, ILogger _logger);
         bool EquipmentStatusUpdate(DBTool _dbTool, IConfiguration _configuration, AEIEQInfo value, ILogger _logger);
+        bool NightOrDay(string _currDateTime);
+        List<HisCommandStatus> GetHistoryCommands(DBTool _dbTool, Dictionary<string, string> _alarmDetail, string StartDateTime, string CurrentDateTime, string Unit, string Zone);
+        bool TriggerAlarms(DBTool _dbTool, IConfiguration configuration, ILogger _logger);
+        bool AutoRemoveCommandWhenSentMCSFailed(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage);
+        DataTable GetAvailableCarrierFromEQP(DBTool _dbTool, string _portid, string _carrierType, bool _isFull, string _RTDEnv);
+        bool AutounlockportWhenNoOrder(DBTool _dbTool, IConfiguration _configuration, ILogger _logger);
+        bool TransferCarrierToSideWH(DBTool _dbTool, IConfiguration _configuration, ConcurrentQueue<EventQueue> _eventQueue, ILogger _logger);
+        EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, EQPLastWaferTime _lastWaferTime);
+        string TryConvertDatetime(string _datetime);
+        string GetJArrayValue(JObject _JArray, string key);
+        bool CheckMCSStatus(DBTool _dbTool, ILogger _logger);
     }
 }

@@ -72,7 +72,7 @@ namespace RTDWebAPI.Controllers
                 _eventQ.EventObject = value;
                 _eventQueue.Enqueue(_eventQ);
 
-                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(value.CommandID.Trim()), out tmpMsg, true);
+                //_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(value.CommandID.Trim()), out tmpMsg, true);
                 /*
                 while (true)
                 {

@@ -16,16 +16,19 @@
     <Compile Remove="ClientApp\**" />
     <Compile Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <Compile Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+    <Compile Remove="Commons\Method\Log\**" />
     <Compile Remove="Commons\Method\WebServiceClient\**" />
     <Compile Remove="Connected Services\**" />
     <Content Remove="ClientApp\**" />
     <Content Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <Content Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+    <Content Remove="Commons\Method\Log\**" />
     <Content Remove="Commons\Method\WebServiceClient\**" />
     <Content Remove="Connected Services\**" />
     <EmbeddedResource Remove="ClientApp\**" />
     <EmbeddedResource Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <EmbeddedResource Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+    <EmbeddedResource Remove="Commons\Method\Log\**" />
     <EmbeddedResource Remove="Commons\Method\WebServiceClient\**" />
     <EmbeddedResource Remove="Connected Services\**" />
     <None Remove="ClientApp\**" />
@@ -33,11 +36,15 @@
 	  
     <None Remove="Commons\Method\HttpClientCallJWTAPI\**" />
 	  
+    <None Remove="Commons\Method\Log\**" />
+	  
     <None Remove="Commons\Method\WebServiceClient\**" />
 	  
     <None Remove="Connected Services\**" />
 	  
     <TypeScriptCompile Remove="ClientApp\**" />
+	  
+    <TypeScriptCompile Remove="Commons\Method\Log\**" />
 	  
     <TypeScriptCompile Remove="Commons\Method\WebServiceClient\**" />
 	  
@@ -65,8 +72,10 @@
     <PackageReference Include="Autofac" Version="6.3.0" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.40.0" />
     <PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="5.2.9" />
+    <PackageReference Include="Microsoft.AspNet.WebApi.WebHost" Version="5.2.9" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication" Version="2.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="5.0.17" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.ViewFeatures" Version="2.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="5.0.17" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0" />
@@ -95,6 +104,12 @@
     <PackageReference Include="System.ServiceModel.NetTcp" Version="4.8.*" />
     <PackageReference Include="System.ServiceModel.Security" Version="4.8.*" />
     <PackageReference Include="System.Web.Services.Description" Version="4.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="RTDSrv">
+      <HintPath>Dll\RTDSrv.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

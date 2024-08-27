@@ -10,6 +10,7 @@ using RTDWebAPI.Commons.Method.Tools;
 using RTDWebAPI.Commons.Method.WSClient;
 using RTDWebAPI.Interface;
 using RTDWebAPI.Models;
+using ServiceStack;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -22,6 +23,7 @@ using System.Net.Mail;
 using System.ServiceModel;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml;
 using JsonSerializer = System.Text.Json.JsonSerializer;
@@ -32,14 +34,14 @@ namespace RTDWebAPI.Service
     {
         public IBaseDataService _BaseDataService = new BaseDataService();
 
-        public bool AutoCheckEquipmentStatus(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue)
+        public bool AutoCheckEquipmentStatus(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue)
         {
 
             DataTable dt = null;
             DataRow[] dr = null;
             string sql = "";
             string tmpMsg = "";
-            _evtQueue = new ConcurrentQueue<EventQueue>();
+            //_evtQueue = new ConcurrentQueue<EventQueue>();
             EventQueue oEventQ = new EventQueue();
             oEventQ.EventName = "AutoCheckEquipmentStatus";
 
@@ -93,10 +95,17 @@ namespace RTDWebAPI.Service
             {
                 tmpMsg = String.Format("[Exception][{0}]: {1}", oEventQ.EventName, ex.Message);
             }
+            finally
+            {
+                if(dt != null)
+                    dt.Dispose();
+            }
+            dt = null;
+            dr = null;
 
             return bResult;
         }
-        public bool AbnormalyEquipmentStatus(DBTool _dbTool, ILogger _logger, bool DebugMode, ConcurrentQueue<EventQueue> _evtQueue, out List<NormalTransferModel> _lstNormalTransfer)
+        public bool AbnormalyEquipmentStatus(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, bool DebugMode, ConcurrentQueue<EventQueue> _evtQueue, out List<NormalTransferModel> _lstNormalTransfer)
         {
 
             DataTable dt = null;
@@ -106,9 +115,18 @@ namespace RTDWebAPI.Service
             oEventQ.EventName = "AbnormalyEquipmentStatus";
             _lstNormalTransfer = new List<NormalTransferModel>();
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
             bool bResult = false;
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
                 NormalTransferModel normalTransfer = new NormalTransferModel();
                 sql = string.Format(_BaseDataService.SelectEqpStatusWaittoUnload());
                 dt = _dbTool.GetDataTable(sql);
@@ -119,9 +137,12 @@ namespace RTDWebAPI.Service
 
                     foreach (DataRow dr2 in dt.Rows)
                     {
+                        oEventQ = new EventQueue();
+                        oEventQ.EventName = "AbnormalyEquipmentStatus";
+
                         normalTransfer = new NormalTransferModel();
 
-                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString()));
+                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString(), tableOrder));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -131,7 +152,7 @@ namespace RTDWebAPI.Service
                             else
                             {
                                 DataTable dt3;
-                                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByPortId(dr2["PORT_ID"].ToString()));
+                                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByPortId(dr2["PORT_ID"].ToString(), tableOrder));
                                 dt3 = _dbTool.GetDataTable(sql);
                                 if (dt3.Rows.Count > 0)
                                     continue;
@@ -144,7 +165,7 @@ namespace RTDWebAPI.Service
                         normalTransfer.PortModel = dr2["PORT_MODEL"].ToString();
 
                         dt2 = null;
-                        sql = string.Format(_BaseDataService.QueryCarrierByLocate(dr2["EQUIPID"].ToString()));
+                        sql = string.Format(_BaseDataService.QueryCarrierByLocate(dr2["EQUIPID"].ToString(), "semi_int.actl_ciserack_vw@semi_int"));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -181,10 +202,13 @@ namespace RTDWebAPI.Service
 
                     foreach (DataRow dr2 in dt.Rows)
                     {
+                        oEventQ = new EventQueue();
+                        oEventQ.EventName = "AbnormalyEquipmentStatus";
+
                         normalTransfer = new NormalTransferModel();
 
                         //sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquip(dr2["EQUIPID"].ToString()));
-                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString()));
+                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString(), tableOrder));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -194,7 +218,7 @@ namespace RTDWebAPI.Service
                             else
                             {
                                 DataTable dt3;
-                                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByPortId(dr2["PORT_ID"].ToString()));
+                                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByPortId(dr2["PORT_ID"].ToString(), tableOrder));
                                 dt3 = _dbTool.GetDataTable(sql);
                                 if (dt3.Rows.Count > 0)
                                     continue;
@@ -207,7 +231,7 @@ namespace RTDWebAPI.Service
                         normalTransfer.PortModel = dr2["PORT_MODEL"].ToString();
 
                         dt2 = null;
-                        sql = string.Format(_BaseDataService.QueryCarrierByLocate(dr2["EQUIPID"].ToString()));
+                        sql = string.Format(_BaseDataService.QueryCarrierByLocate(dr2["EQUIPID"].ToString(), "semi_int.actl_ciserack_vw@semi_int"));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -244,9 +268,14 @@ namespace RTDWebAPI.Service
 
                     foreach (DataRow dr2 in dt.Rows)
                     {
+
+                        oEventQ = new EventQueue();
+                        oEventQ.EventName = "AbnormalyEquipmentStatus";
+
+
                         normalTransfer = new NormalTransferModel();
 
-                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString()));
+                        sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(dr2["EQUIPID"].ToString(), dr2["PORT_ID"].ToString(), tableOrder));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -271,7 +300,7 @@ namespace RTDWebAPI.Service
                         normalTransfer.PortModel = dr2["PORT_MODEL"].ToString();
 
                         dt2 = null;
-                        sql = string.Format(_BaseDataService.QueryCarrierByLocateType("ERACK", dr2["EQUIPID"].ToString()));
+                        sql = string.Format(_BaseDataService.QueryCarrierByLocateType("ERACK", dr2["EQUIPID"].ToString(), "semi_int.actl_ciserack_vw@semi_int"));
                         dt2 = _dbTool.GetDataTable(sql);
 
                         if (dt2.Rows.Count > 0)
@@ -302,6 +331,13 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
+            dr = null;
 
             return bResult;
         }
@@ -309,6 +345,8 @@ namespace RTDWebAPI.Service
         {
             DataTable dt = null;
             DataTable dt2 = null;
+            DataTable dtTemp = null;
+            DataTable dtTemp2 = null;
             DataRow[] dr = null;
             string sql = "";
 
@@ -415,6 +453,38 @@ namespace RTDWebAPI.Service
                                 }
                             }
                         }
+                        else if (dr2["State"].ToString().Equals("WAIT"))
+                        {
+                            if (!dr2["lotid"].ToString().Equals(""))
+                            {
+                                sql = _BaseDataService.SelectTableLotInfoByLotid(dr2["lotid"].ToString());
+                                dtTemp = _dbTool.GetDataTable(sql);
+
+                                if(dtTemp.Rows.Count > 0)
+                                {
+                                    foreach(DataRow drT in dtTemp.Rows)
+                                    {
+                                        if(drT["state"].ToString().Equals("HOLD"))
+                                        {
+                                            sql = _BaseDataService.QueryDataByLotid(dr2["lotid"].ToString(), GetExtenalTables(_configuration, "SyncExtenalData", "AdsInfo"));
+                                            dtTemp2 = _dbTool.GetDataTable(sql);
+                                            if(dtTemp2.Rows.Count > 0)
+                                            {
+                                                if(dtTemp2.Rows[0]["state"].ToString().Equals("WAIT"))
+                                                {
+                                                    sql2 = string.Format(_BaseDataService.UpdateLotinfoState(dr2["lotid"].ToString(), "WAIT"));
+                                                    _dbTool.SQLExec(sql2, out sqlMsg, true);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                //if (TriggerCarrierInfoUpdate(_dbTool, _configuration, _logger, dr2["lotid"].ToString()))
+                                //{
+                                //Send InfoUpdate
+                                //}
+                            }
+                        }
                         else if (dr2["State"].ToString().Equals("Nothing"))
                         {
                             //Do Nothing
@@ -433,11 +503,11 @@ namespace RTDWebAPI.Service
                     foreach (DataRow dr2 in dt.Rows)
                     {
                         sql = string.Format(_BaseDataService.SelectTableLotInfoByLotid(dr2["lotid"].ToString()));
-                        dt2 = _dbTool.GetDataTable(sql);
+                        dtTemp = _dbTool.GetDataTable(sql);
 
-                        if (dt2.Rows.Count > 0)
+                        if (dtTemp.Rows.Count > 0)
                         {
-                            if (TimerTool("day", dt2.Rows[0]["lastmodify_dt"].ToString()) <= 1)
+                            if (TimerTool("day", dtTemp.Rows[0]["lastmodify_dt"].ToString()) <= 1)
                                 continue;
                         }
 
@@ -460,6 +530,19 @@ namespace RTDWebAPI.Service
                 bResult = false;
                 throw;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+            }
+            dt = null;
+            dt2 = null;
+            dtTemp = null;
+            dr = null;
 
             return bResult;
         }
@@ -617,10 +700,20 @@ namespace RTDWebAPI.Service
             {
                 bResult = false;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+            }
+            dt = null;
+            dt2 = null;
+            dr = null;
 
             return bResult;
         }
-        public bool CheckLotEquipmentAssociate(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue)
+        public bool CheckLotEquipmentAssociate(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue)
         {
 
             DataTable dt = null;
@@ -628,13 +721,23 @@ namespace RTDWebAPI.Service
             string tmpMsg = "";
             bool bResult = false;
             bool bReflush = false;
-            _evtQueue = new ConcurrentQueue<EventQueue>();
+            string _adstable = "";
+            //ConcurrentQueue<EventQueue>  evtQueue = new ConcurrentQueue<EventQueue>();
 
             try
             {
                 sql = string.Format(_BaseDataService.SchSeqReflush());
                 dt = _dbTool.GetDataTable(sql);
-
+                /***當Customer , Stage 為群組, 當超過1組以上, 則需要重新整理Sch Seq */
+                if (dt.Rows.Count > 1)
+                {
+                    bReflush = true;
+                }
+               else
+                {
+                    bReflush = false;
+                }
+                /*
                 if (dt.Rows.Count > 0)
                 {
                     if (dt.Rows[0]["allCount"] is not null)
@@ -647,6 +750,8 @@ namespace RTDWebAPI.Service
                         bReflush = true;
                     }
                 }
+                */
+
 
                 if (!bReflush)
                 {
@@ -658,7 +763,8 @@ namespace RTDWebAPI.Service
                     }
                 }
 
-                sql = string.Format(_BaseDataService.ReflushProcessLotInfo());
+                _adstable = "semi_int.actl_ciserack_vw@semi_int";
+                sql = string.Format(_BaseDataService.ReflushProcessLotInfo(_adstable));
                 dt = _dbTool.GetDataTable(sql);
                 int iSchSeq = 0;
                 string sCustomer = "";
@@ -722,7 +828,7 @@ namespace RTDWebAPI.Service
                         bool bagain = false;
                         if (dr2["EQUIP_ASSO"].ToString().Equals("N"))
                         {
-                            if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 3)
+                            if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 1)
                             { continue; }
                             else
                                 bagain = true;
@@ -741,14 +847,14 @@ namespace RTDWebAPI.Service
                             //Equipment Assoicate 為 Yes, 每5分鐘再次檢查一次
                             if (!dr2["EQUIPLIST"].ToString().Equals(""))
                             {
-                                if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 10)
+                                if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 5)
                                 { continue; }
                                 else
                                     bagain = true;
                             }
                             else
                             {
-                                if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 5)
+                                if (TimerTool("minutes", dr2["lastmodify_dt"].ToString()) <= 1)
                                 { continue; }
                                 else
                                     bagain = true;
@@ -772,17 +878,23 @@ namespace RTDWebAPI.Service
             {
                 bResult = false;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+            }
+            dt = null;
 
             return bResult;
         }
-        public bool UpdateEquipmentAssociateToReady(DBTool _dbTool, out ConcurrentQueue<EventQueue> _evtQueue)
+        public bool UpdateEquipmentAssociateToReady(DBTool _dbTool, ConcurrentQueue<EventQueue> _evtQueue)
         {
 
             DataTable dt = null;
             string sql = "";
 
             bool bResult = false;
-            _evtQueue = new ConcurrentQueue<EventQueue>();
+            //_evtQueue = new ConcurrentQueue<EventQueue>();
 
             try
             {
@@ -819,6 +931,12 @@ namespace RTDWebAPI.Service
             {
                 bResult = false;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+            }
+            dt = null;
 
             return bResult;
         }
@@ -849,6 +967,12 @@ namespace RTDWebAPI.Service
             {
                 strResult = ex.Message;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
 
             return strResult;
         }
@@ -866,12 +990,12 @@ namespace RTDWebAPI.Service
                 {
                     tmpLocate = _portId.Split('_')[0];
                     tmpPortNo = _portId.Split('_')[1];
-                    iPortNo = !tmpPortNo.Trim().Equals("") ? int.Parse(tmpPortNo.Replace("SP", "")) : 0;
+                    iPortNo = !tmpPortNo.Trim().Equals("") ? int.Parse(tmpPortNo.Replace("LP", "")) : 0;
                 }
 
                 if (iPortNo > 0)
                 {
-                    sql = string.Format(_BaseDataService.GetCarrierByLocate(_portId, iPortNo));
+                    sql = string.Format(_BaseDataService.GetCarrierByLocate(tmpLocate, iPortNo));
                     dt = _dbTool.GetDataTable(sql);
 
                     if (dt.Rows.Count > 0)
@@ -885,6 +1009,12 @@ namespace RTDWebAPI.Service
             {
                 strResult = ex.Message;
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+            }
+            dt = null;
 
             return strResult;
         }
@@ -895,7 +1025,7 @@ namespace RTDWebAPI.Service
             {
                 string cfgPath_ip = "";
                 string cfgPath_port = "";
-                string cfgPath_timeSpan = "";
+                string cfgPath_timeSpan = "HttpClientSpan";
 
                 if (_tarMcsSvr.Equals(""))
                 {
@@ -913,12 +1043,12 @@ namespace RTDWebAPI.Service
                 //client.BaseAddress = new Uri(string.Format("http://{0}:{1}/", _configuration["MCS:ip"], _configuration["MCS:port"]));
                 //client.Timeout = TimeSpan.Parse(_configuration["MCS:timeSpan"]);
                 client.BaseAddress = new Uri(string.Format("http://{0}:{1}/", _configuration[cfgPath_ip], _configuration[cfgPath_port]));
-                client.Timeout = TimeSpan.Parse(_configuration[cfgPath_timeSpan]);
+                client.Timeout = TimeSpan.FromSeconds(double.Parse(_configuration[cfgPath_timeSpan]));
                 client.DefaultRequestHeaders.Accept.Clear();
             }
             catch (Exception ex)
             {
-
+                throw;
             }
             return client;
         }
@@ -955,8 +1085,24 @@ namespace RTDWebAPI.Service
             HttpClient client;
             HttpResponseMessage response;
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+            string _startTime = "";
+            string tmpCarrierId = "";
+
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
+                if (_keyRTDEnv.Equals("UAT"))
+                {
+                    _logger.Info(string.Format("Pass. It's {0} Env.", _keyRTDEnv));
+                    return true;
+                }
 
                 if (ListCmds.Count > 0)
                 {
@@ -974,30 +1120,51 @@ namespace RTDWebAPI.Service
                     response = new HttpResponseMessage();
 
                     DataTable dt = null;
+                    DataTable dtTemp = null;
                     DataRow[] dr = null;
                     DataRow[] dr2 = null;
                     string sql = "";
                     bool bRetry = false;
+                    string _cmdCurrentState = "";
 
                     foreach (string theCmdId in ListCmds)
                     {
+                        string tmpCmdType = "";
                         exceptionCmdId = theCmdId;
                         _logger.Trace(string.Format("[SentDispatchCommandtoMCS]: Command ID [{0}]", theCmdId));
                         //// 查詢資料
                         ///
-                        dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCmdId(theCmdId));
+                        dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCmdId(theCmdId, tableOrder));
 
                         if (dt.Rows.Count <= 0)
                             continue;
                         //已有其它線程正在處理
-                        DateTime curDT = DateTime.UtcNow;
+
+                        _startTime = dt.Rows[0]["start_dt"] is null ? "" : dt.Rows[0]["start_dt"].ToString().Trim().Equals("") ? "" : Convert.ToDateTime(dt.Rows[0]["start_dt"].ToString()).ToString("yyyy/MM/dd HH:mm:ss");
+
+                        if (!_startTime.Trim().Equals(""))
+                        {
+                            if (Convert.ToDateTime(_startTime) > DateTime.Now)
+                                continue;
+                        }
+
+                        if (dt.Rows[0]["REPLACE"].ToString().Equals("1"))
+                        {
+                            if (dt.Rows.Count <= 1)
+                                continue;
+                        }
+
+                        tmpCmdType = dt.Rows[0]["CMD_TYPE"] is null ? "" : dt.Rows[0]["CMD_TYPE"].ToString();
+                        _cmdCurrentState = dt.Rows[0]["CMD_CURRENT_STATE"] is null ? "" : dt.Rows[0]["CMD_CURRENT_STATE"].ToString();
+
+                        DateTime curDT = DateTime.Now;
                         if (int.Parse(dt.Rows[0]["ISLOCK"].ToString()).Equals(1))
                         {
                             try
                             {
                                 string createDateTime = dt.Rows[0]["CREATE_DT"].ToString();
                                 string lastDateTime = dt.Rows[0]["LASTMODIFY_DT"].ToString();
-                                string tmpCarrierId = dt.Rows[0]["CARRIERID"].ToString();
+                                tmpCarrierId = dt.Rows[0]["CARRIERID"].ToString();
                                 bool bHaveSent = dt.Rows[0]["CMD_CURRENT_STATE"].ToString().Equals("Init") ? true : false;
 
                                 if (bHaveSent)
@@ -1006,7 +1173,7 @@ namespace RTDWebAPI.Service
                                 if (!lastDateTime.Equals(""))
                                 {
                                     bRetry = false;
-                                    curDT = DateTime.UtcNow;
+                                    curDT = DateTime.Now;
                                     DateTime createDT = Convert.ToDateTime(createDateTime);
                                     DateTime tmpDT = Convert.ToDateTime(lastDateTime);
                                     TimeSpan minuteSpan = new TimeSpan(tmpDT.Ticks - curDT.Ticks);
@@ -1019,15 +1186,16 @@ namespace RTDWebAPI.Service
                                     {
                                         bRetry = true;
                                     }
-                                    else if (Math.Abs(totalSpan.TotalMinutes) > 10)
+                                    else if (Math.Abs(totalSpan.TotalMinutes) > 30)
                                     {
                                         dr = dt.Select("CMD_CURRENT_STATE not in ('Init', 'Running', 'Success')");
 
                                         if (dr.Length > 0)
                                         {
-                                            //嘗試發送, 大於10分鐘仍未送出, 刪除
+                                            //嘗試發送, 大於30分鐘仍未送出, 刪除
                                             _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(theCmdId), out tmpMsg, true);
-                                            _dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(theCmdId), out tmpMsg, true);
+                                            _dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(theCmdId, tableOrder), out tmpMsg, true);
+                                            _logger.Trace(string.Format("[SentDispatchCommandtoMCS]: Delete Workinprocess_sch command[{0}] cause overtime 30 mints of retry", theCmdId));
 
                                             if (tmpCarrierId.Equals("*") || tmpCarrierId.Equals(""))
                                             { }
@@ -1045,10 +1213,10 @@ namespace RTDWebAPI.Service
 
                                     if (bRetry)
                                     {
-                                        dr = dt.Select("CMD_CURRENT_STATE in ('Failed', '')");
+                                        dr = dt.Select("CMD_CURRENT_STATE in ('Failed', ' ', '','Received')");
                                         if (dr.Length > 0)
                                         {
-                                            _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(theCmdId), out tmpMsg, true);
+                                            _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(theCmdId, tableOrder), out tmpMsg, true);
                                         }
                                     }
                                 }
@@ -1059,52 +1227,137 @@ namespace RTDWebAPI.Service
                             continue;
                         }
                         else
-                            _dbTool.SQLExec(_BaseDataService.UpdateLockWorkInProcessSchByCmdId(theCmdId), out tmpMsg, true);
+                            _dbTool.SQLExec(_BaseDataService.UpdateLockWorkInProcessSchByCmdId(theCmdId, tableOrder), out tmpMsg, true);
 
-                        dr = dt.Select("CMD_CURRENT_STATE=''");
+                        dr = dt.Select("CMD_CURRENT_STATE in (' ','NearComp')");
                         if (dr.Length <= 0)
                         {
-                            sql = _BaseDataService.UpdateTableWorkInProcessSchByCmdId(" ", curDT.ToString("yyyy-M-d hhmmss"), theCmdId);
+                            try 
+                            {
+                                _logger.Debug(string.Format("[SendTransferCommand][{0}][{1}]", theCmdId, "CMD_CURRENT_STATE=' '"));
+                            }
+                            catch(Exception ex) { }
+                            
+
+                            sql = _BaseDataService.UpdateTableWorkInProcessSchByCmdId("Received", curDT.ToString("yyyy-M-d hhmmss"), theCmdId, tableOrder);
                             try
                             {
-                                curDT = DateTime.UtcNow;
+                                curDT = DateTime.Now;
                                 dr2 = dt.Select("CMD_CURRENT_STATE='Failed'");
                                 if (dr2.Length <= 0)
                                     continue;
                             }
                             catch (Exception ex)
                             {
-                                curDT = DateTime.UtcNow;
+                                curDT = DateTime.Now;
                                 _dbTool.SQLExec(sql, out tmpMsg, true);
                             }
                         }
+                        else
+                        {
+                            try
+                            {
+                                _logger.Debug(string.Format("[SendTransferCommand][{0}][{1}][{2}]", theCmdId, dr[0]["CMD_CURRENT_STATE"], "CMD_CURRENT_STATE not ' '"));
+                            }
+                            catch (Exception ex) { }
+                        }
+                        //Pre-Transfer
+                        string tmpPriority = dt.Rows[0]["PRIORITY"].ToString();
+                        _logger.Debug(string.Format("[SendTransferCommand][{0}][{1}]", tmpCmdType, tmpPriority));
+
+                        if (!tmpCarrierId.Equals(""))
+                        {
+                            int iPriority = 0;
+                            sql = _BaseDataService.QueryLotInfoByCarrierID(tmpCarrierId);
+                            dtTemp = _dbTool.GetDataTable(sql);
+
+                            if (dtTemp.Rows.Count > 0)
+                            {
+                                iPriority = dtTemp.Rows[0]["PRIORITY"] is null ? 0 : int.Parse(dtTemp.Rows[0]["PRIORITY"].ToString());
+                            }
+
+                            if(iPriority >= 70)
+                            {
+                                tmpPriority = iPriority.ToString();
+                            }
+                            else
+                            {
+                                if (tmpCmdType.ToUpper().Equals("PRE-TRANSFER"))
+                                {
+                                    if (iPriority > 20)
+                                    {
+                                        tmpPriority = iPriority.ToString();
+                                    }
+                                    else
+                                    {
+                                        tmpPriority = "20";
+                                    }
+                                }
+                                else
+                                {
+                                    tmpPriority = iPriority.ToString();
+                                }
+                            }
+                        }
+                        else 
+                        {
+                            if (tmpCmdType.ToUpper().Equals("PRE-TRANSFER"))
+                                tmpPriority = "20";
+                        }
+
+                        _logger.Debug(string.Format("[SendTransferCommand][{0}][{1}]", tmpCmdType, tmpPriority));
 
                         string tmp00 = "{{0}, {1}, {2}, {3}}";
                         string tmp01 = string.Format("\"CommandID\": \"{0}\"", theCmdId);
-                        string tmp02 = string.Format("\"Priority\": \"{0}\"", dt.Rows[0]["PRIORITY"].ToString());
-                        string tmp03 = string.Format("\"Replace\": \"{0}\"", dt.Rows.Count.ToString());
-                        string strTransferCmd = "\"CommandID\": \"" + theCmdId + "\",\"Priority\": " + dt.Rows[0]["PRIORITY"].ToString() + ",\"Replace\": " + dt.Rows[0]["REPLACE"].ToString() + "{0}";
+                        string tmp02 = string.Format("\"Priority\": \"{0}\"", tmpCmdType.ToUpper().Equals("PRE-TRANSFER") ? "20" : dt.Rows[0]["PRIORITY"].ToString());
+                        string tmp03 = string.Format("\"Replace\": \"{0}\"", dt.Rows[0]["REPLACE"].ToString());
+                        string strTransferCmd = "\"CommandID\": \"" + theCmdId + "\",\"Priority\": " + tmpPriority + ",\"Replace\": " + dt.Rows[0]["REPLACE"].ToString() + "{0}";
                         string strTransCmd = "";
                         string tmpUid = "";
                         string tmpCarrierID = "";
+                        //string tmpCmdType = "";
+                        string tmpLoadCmdType = "";
+                        string tmpLoadCarrierID = "";
+                        string tmpDest = "";
                         foreach (DataRow tmDr in dt.Rows)
                         {
-                            tmpUid = tmDr["UUID"].ToString();
+                            tmpDest = "";
 
-                            if (!strTransCmd.Equals(""))
-                            {
-                                strTransCmd = strTransCmd + ",";
-                            }
+                            tmpUid = tmDr["UUID"].ToString();
+                            tmpCmdType = tmDr["CMD_TYPE"].ToString();
+                            tmpDest = tmDr["DEST"].ToString();
+
+                            if (tmpCmdType.ToUpper().Equals("LOAD"))
+                                tmpLoadCmdType = tmpCmdType;
+
+                            //if (!strTransCmd.Equals(""))
+                            //{
+                            //strTransCmd = strTransCmd + ",";
+                            //}
                             tmpCarrierID = tmDr["CARRIERID"].ToString().Equals("*") ? "" : tmDr["CARRIERID"].ToString();
 
-                            strTransCmd = strTransCmd + "{" +
-                                        "\"CarrierID\": \"" + tmpCarrierID + "\", " +
-                                        "\"Source\": \"" + tmDr["SOURCE"].ToString() + "\", " +
-                                        "\"Dest\": \"" + tmDr["DEST"].ToString() + "\", " +
-                                        "\"LotID\": \"" + tmDr["LotID"].ToString() + "\", " +
-                                        "\"Quantity\":" + tmDr["Quantity"].ToString() + ", " +
-                                        "\"Total\":" + tmDr["Total"].ToString() + ", " +
-                                        "\"CarrierType\": \"" + tmDr["CARRIERTYPE"].ToString() + "\"} ";
+                            if (strTransCmd.Equals(""))
+                            {
+                                strTransCmd = strTransCmd + "{" +
+                                       "\"CarrierID\": \"" + tmpCarrierID + "\", " +
+                                       "\"Source\": \"" + tmDr["SOURCE"].ToString() + "\", " +
+                                       "\"Dest\": \"" + tmDr["DEST"].ToString() + "\", " +
+                                       "\"LotID\": \"" + tmDr["LotID"].ToString() + "\", " +
+                                       "\"Quantity\":" + tmDr["Quantity"].ToString() + ", " +
+                                       "\"Total\":" + tmDr["Total"].ToString() + ", " +
+                                       "\"CarrierType\": \"" + tmDr["CARRIERTYPE"].ToString() + "\"} ";
+                            }
+                            else
+                            {
+                                strTransCmd = strTransCmd + ", {" +
+                                            "\"CarrierID\": \"" + tmpCarrierID + "\", " +
+                                            "\"Source\": \"" + tmDr["SOURCE"].ToString() + "\", " +
+                                            "\"Dest\": \"" + tmDr["DEST"].ToString() + "\", " +
+                                            "\"LotID\": \"" + tmDr["LotID"].ToString() + "\", " +
+                                            "\"Quantity\":" + tmDr["Quantity"].ToString() + ", " +
+                                            "\"Total\":" + tmDr["Total"].ToString() + ", " +
+                                            "\"CarrierType\": \"" + tmDr["CARRIERTYPE"].ToString() + "\"} ";
+                            }
                         }
 
 
@@ -1120,6 +1373,8 @@ namespace RTDWebAPI.Service
                         _logger.Trace(string.Format("[SendTransferCommand]:{0}", tmp04));
                         response = client.PostAsJsonAsync("api/SendTransferCommand", gizmo).Result;
                         //response = client.PostAsJsonAsync("api/SendTransferCommand", tmp04).Result;
+                        var respContent = response.Content.ReadAsStringAsync();
+                        string tmpResult = respContent.Result;
 
                         if (response != null)
                         {
@@ -1127,11 +1382,15 @@ namespace RTDWebAPI.Service
                             if (response.IsSuccessStatusCode)
                             {
                                 //需等待回覆後再記錄
-                                _logger.Info(string.Format("Info: SendCommand is OK. "));
+                                _logger.Info(string.Format("Info: SendCommand [{0}][{1}] is OK. {2}", theCmdId, tmpDest, response.StatusCode));
                                 _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(theCmdId), out tmpMsg, true);
-                                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Initial", DateTime.UtcNow.ToString("yyyy-M-d hh:mm:ss"), theCmdId), out tmpMsg, true);
+                                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Initial", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), theCmdId, tableOrder), out tmpMsg, true);
                                 //新增一筆Total Record
-                                _dbTool.SQLExec(_BaseDataService.InsertRTDStatisticalRecord(curDT.ToString("yyyy-MM-dd HH:mm:ss"), theCmdId, "T"), out tmpMsg, true);
+                                //cmd_Type
+                                if (tmpLoadCmdType.ToUpper().Equals("LOAD") && !tmpLoadCarrierID.Equals(""))
+                                {
+                                    _dbTool.SQLExec(_BaseDataService.InsertRTDStatisticalRecord(curDT.ToString("yyyy-MM-dd HH:mm:ss"), theCmdId, "T"), out tmpMsg, true);
+                                }
 
                                 foreach (DataRow tmDr in dt.Rows)
                                 {
@@ -1151,19 +1410,21 @@ namespace RTDWebAPI.Service
                             }
                             else
                             {
-                                _logger.Info(string.Format("Info: SendCommand Failed. "));
+                                //_logger.Info(string.Format("Info: SendCommand [{0}] Failed. {1}", theCmdId, response.RequestMessage));
+                                _logger.Info(string.Format("Info: SendCommand [{0}][{1}] Failed. {2}", theCmdId, tmpDest, response.RequestMessage));
                                 //傳送失敗, 即計算為Failed
                                 //新增一筆Total Record
                                 //_dbTool.SQLExec(_BaseDataService.InsertRTDStatisticalRecord(curDT.ToString("yyyy-MM-dd HH:mm:ss"), theCmdId, "F"), out tmpMsg, true);
 
                                 //_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByUId(tmpUid), out tmpMsg, true);
-                                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Failed", DateTime.UtcNow.ToString("yyyy-M-d hh:mm:ss"), theCmdId), out tmpMsg, true);
-                                _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(theCmdId), out tmpMsg, true);
+                                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Failed", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), theCmdId, tableOrder), out tmpMsg, true);
+                                _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(theCmdId, tableOrder), out tmpMsg, true);
                                 //Console.WriteLine("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                                 bResult = false;
                                 tmpState = "NG";
-                                tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.ReasonPhrase);
+                                tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.RequestMessage);
                                 //_logger.Info(string.Format("Info: SendCommand Failed. {0}", tmpMsg));
+                                _logger.Info(string.Format("SendCommand [{0}] Failed Message: {1}", theCmdId, tmpMsg));
 
                                 string[] _argvs = new string[] { theCmdId, "", "" };
                                 if (CallRTDAlarm(_dbTool, 10100, _argvs))
@@ -1174,9 +1435,75 @@ namespace RTDWebAPI.Service
                         }
                         else
                         {
-                            bResult = false;
-                            tmpState = "NG";
-                            tmpMsg = "應用程式呼叫 API 發生異常";
+                            //沒有立刻回應時, 多等待0.5秒補送1次後, 仍無response才判斷逾時
+                            Thread.Sleep(500);
+                            _logger.Trace(string.Format("[SendTransferCommand][Resend][{0}]", tmp04));
+                            response = client.PostAsJsonAsync("api/SendTransferCommand", gizmo).Result;
+
+                            if (response != null)
+                            {
+
+                                //不為response, 即表示total加1 || 改成MCS回報後才統計總數
+                                if (response.IsSuccessStatusCode)
+                                {
+                                    //需等待回覆後再記錄
+                                    _logger.Info(string.Format("Info: Retry SendCommand [{0}] is OK. {1}", theCmdId, response.StatusCode));
+                                    _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(theCmdId), out tmpMsg, true);
+                                    _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Initial", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), theCmdId, tableOrder), out tmpMsg, true);
+                                    //新增一筆Total Record
+                                    //cmd_Type
+                                    if (tmpLoadCmdType.ToUpper().Equals("LOAD") && !tmpLoadCarrierID.Equals(""))
+                                    {
+                                        _dbTool.SQLExec(_BaseDataService.InsertRTDStatisticalRecord(curDT.ToString("yyyy-MM-dd HH:mm:ss"), theCmdId, "T"), out tmpMsg, true);
+                                    }
+
+                                    foreach (DataRow tmDr in dt.Rows)
+                                    {
+
+                                        string tmpSql = _BaseDataService.SelectTableCarrierAssociateByCarrierID(tmDr["CARRIERID"].ToString());
+                                        DataTable dt2 = _dbTool.GetDataTable(tmpSql);
+                                        if (dt2.Rows.Count > 0)
+                                        {
+                                            string tmpLotid = dt2.Rows[0]["lot_id"].ToString().Trim();
+                                            _dbTool.SQLExec(_BaseDataService.UpdateTableLotInfoState(tmpLotid, "PROC"), out tmpMsg, true);
+                                        }
+                                    }
+
+                                    bResult = true;
+                                    tmpState = "OK";
+                                    tmpMsg = "";
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("Info: Retry SendCommand [{0}] Failed. {1}", theCmdId, response.StatusCode));
+                                    //傳送失敗, 即計算為Failed
+                                    //新增一筆Total Record
+                                    //_dbTool.SQLExec(_BaseDataService.InsertRTDStatisticalRecord(curDT.ToString("yyyy-MM-dd HH:mm:ss"), theCmdId, "F"), out tmpMsg, true);
+
+                                    //_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByUId(tmpUid), out tmpMsg, true);
+                                    _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("Failed", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), theCmdId, tableOrder), out tmpMsg, true);
+                                    _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(theCmdId, tableOrder), out tmpMsg, true);
+                                    //Console.WriteLine("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                                    bResult = false;
+                                    tmpState = "NG";
+                                    tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.RequestMessage);
+                                    //_logger.Info(string.Format("Info: SendCommand Failed. {0}", tmpMsg));
+                                    _logger.Info(string.Format("SendCommand [{0}] Failed Message: {1}", theCmdId, tmpMsg));
+
+                                    string[] _argvs = new string[] { theCmdId, "", "" };
+                                    if (CallRTDAlarm(_dbTool, 10100, _argvs))
+                                    {
+                                        _logger.Info(string.Format("Info: SendCommand Failed. {0}", tmpMsg));
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                bResult = false;
+                                tmpState = "NG";
+                                tmpMsg = string.Format("[SendTransferCommand][{0}][{1}]", "應用程式呼叫 API 發生異常", "MCS response timeout.");
+                                _logger.Trace(string.Format("[SendTransferCommand][{0}][{1}]", tmpMsg, "MCS response timeout."));
+                            }
                         }
 
                         //if(tmpState.Equals("NG"))
@@ -1190,6 +1517,24 @@ namespace RTDWebAPI.Service
                     response.Dispose();
                 }
             }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                tmpMsg = string.Format("ArgumentOutOfRangeException [{0}]: ex.Message [{1}]", "SentDispatchCommandtoMCS", ex.Message);
+                _logger.Info(tmpMsg);
+                tmpMsg = "";
+                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId(" ", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), exceptionCmdId, tableOrder), out tmpMsg, true);
+                if (!tmpMsg.Equals(""))
+                    _logger.Info(tmpMsg);
+                tmpMsg = "";
+                _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(exceptionCmdId, tableOrder), out tmpMsg, true);
+                if (!tmpMsg.Equals(""))
+                    _logger.Info(tmpMsg);
+                string[] _argvs = new string[] { exceptionCmdId, "", "" };
+                if (CallRTDAlarm(_dbTool, 10101, _argvs))
+                {
+                    _logger.Info(string.Format("Info: SendCommand Failed. {0}", ex.Message));
+                }
+            }
             catch (Exception ex)
             {
                 //_dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(exceptionCmdId), out tmpMsg, true);
@@ -1197,11 +1542,11 @@ namespace RTDWebAPI.Service
                 tmpMsg = string.Format("Info: SendCommand Failed. Exception is {0}, ", ex.Message);
                 _logger.Info(tmpMsg);
                 tmpMsg = "";
-                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId(" ", DateTime.UtcNow.ToString("yyyy-M-d hh:mm:ss"), exceptionCmdId), out tmpMsg, true);
+                _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId(" ", DateTime.Now.ToString("yyyy-M-d hh:mm:ss"), exceptionCmdId, tableOrder), out tmpMsg, true);
                 if (!tmpMsg.Equals(""))
                     _logger.Info(tmpMsg);
                 tmpMsg = "";
-                _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(exceptionCmdId), out tmpMsg, true);
+                _dbTool.SQLExec(_BaseDataService.UpdateUnlockWorkInProcessSchByCmdId(exceptionCmdId, tableOrder), out tmpMsg, true);
                 if (!tmpMsg.Equals(""))
                     _logger.Info(tmpMsg);
                 string[] _argvs = new string[] { exceptionCmdId, "", "" };
@@ -1226,8 +1571,16 @@ namespace RTDWebAPI.Service
             HttpClient client;
             HttpResponseMessage response;
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
 
                 if (ListCmds.Count > 0)
                 {
@@ -1248,7 +1601,7 @@ namespace RTDWebAPI.Service
                     foreach (string theUuid in ListCmds)
                     {
                         //// 查詢資料
-                        dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCmdId(theUuid));
+                        dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCmdId(theUuid, tableOrder));
                         dr = dt.Select("CMD_CURRENT_STATE='Initial'");
                         if (dr.Length <= 0)
                         {
@@ -1310,6 +1663,134 @@ namespace RTDWebAPI.Service
 
             return bResult;
         }
+        public bool SentTransferCommandtoToMCS(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, TransferList ListCmds, out string _tmpMsg)
+        {
+            bool bResult = false;
+            string tmpState = "";
+            string tmpMsg = "";
+            NormalTransferModel transferCmds = new NormalTransferModel();
+            TransferList theTransfer = new TransferList();
+            //Http Object
+            HttpClient client;
+            HttpResponseMessage response;
+            _tmpMsg = "";
+
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
+            try
+            {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
+                if (_keyRTDEnv.Equals("UAT"))
+                {
+                    _logger.Info(string.Format("Pass. It's {0} Env.", _keyRTDEnv));
+                    return true;
+                }
+
+                if (!ListCmds.CarrierID.Equals(""))
+                {
+                    //No Execute
+                    client = GetHttpClient(_configuration, "");
+                    // Add an Accept header for JSON format.
+                    // 為JSON格式添加一個Accept表頭
+                    client.Timeout = TimeSpan.FromMinutes(1);
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new MediaTypeWithQualityHeaderValue("application/json"));
+                    //JObject oToken = JObject.Parse(GetAuthrizationTokenfromMCS(_configuration));
+                    //client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", oToken["token"].ToString());
+                    response = new HttpResponseMessage();
+
+                    DataTable dt = null;
+                    DataRow[] dr = null;
+                    string sql = "";
+                    int iRec = 0;
+
+                    //foreach (string theUuid in ListCmds)
+                    if(ListCmds is not null)
+                    {
+                        //// 查詢資料
+                        /*
+                        dt = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCmdId(""));
+                        dr = dt.Select("CMD_CURRENT_STATE='Initial'");
+                        if (dr.Length <= 0)
+                        {
+                            _logger.Info(string.Format("no find the uuid [{0}]", theUuid));
+                            continue;
+                        }*/
+
+                        //組織派送指令
+                        if (transferCmds is null)
+                        {
+                            transferCmds = new NormalTransferModel();
+                            transferCmds.CommandID = Tools.GetCommandID(_dbTool);
+                            transferCmds.CarrierID = ListCmds.CarrierID;
+                            transferCmds.Priority = 0;
+                            transferCmds.Replace = 0;
+                            transferCmds.Transfer = new List<TransferList>();
+                        }
+                        else
+                        {
+                            transferCmds.CommandID = Tools.GetCommandID(_dbTool);
+                            transferCmds.CarrierID = ListCmds.CarrierID;
+                            transferCmds.Priority = 0;
+                            transferCmds.Replace = 0;
+                            transferCmds.Transfer = new List<TransferList>();
+                        }
+
+                        theTransfer = new TransferList();
+                        theTransfer.Source = ListCmds.Source;
+                        theTransfer.Dest = ListCmds.Dest;
+                        theTransfer.LotID = ListCmds.LotID;
+                        theTransfer.Quantity = ListCmds.Quantity;
+                        theTransfer.CarrierType = ListCmds.CarrierType;
+
+                        transferCmds.Transfer.Add(theTransfer);
+                        iRec++;
+
+                        transferCmds.Replace = iRec;
+                    }
+
+                    Uri gizmoUri = null;
+
+                    response = client.PostAsJsonAsync("api/command", transferCmds).Result;
+                    if (response.IsSuccessStatusCode)
+                    {
+                        gizmoUri = response.Headers.Location;
+                        bResult = true;
+                        tmpState = "OK";
+                        tmpMsg = "";
+                    }
+                    else
+                    {
+                        //Console.WriteLine("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        bResult = false;
+                        tmpState = "NG";
+                        tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.ReasonPhrase);
+                    }
+
+                    //Release Resource
+                    client.Dispose();
+                    response.Dispose();
+                }
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                _tmpMsg = ex.Message;
+            }
+            catch (Exception ex)
+            {
+                _tmpMsg = ex.Message;
+            }
+
+            //_logger.Info(string.Format("Info: Result is {0}, Reason :", foo.State, foo.Message));
+
+            return bResult;
+        }
         public APIResult SentCommandtoMCS(IConfiguration _configuration, ILogger _logger, List<string> agrs)
         {
             APIResult foo;
@@ -1323,8 +1804,17 @@ namespace RTDWebAPI.Service
             HttpClient client;
             HttpResponseMessage response;
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
                 //Execute 1 
                 client = GetHttpClient(_configuration, "");
                 // Add an Accept header for JSON format.
@@ -1448,6 +1938,16 @@ namespace RTDWebAPI.Service
                 client.Dispose();
                 response.Dispose();
             }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                foo = new APIResult()
+                {
+                    Success = false,
+                    State = "NG",
+                    Message = ex.Message
+                };
+                _logger.Debug(string.Format("Exception: {0}", foo.Message));
+            }
             catch (Exception ex)
             {
                 foo = new APIResult()
@@ -1463,7 +1963,7 @@ namespace RTDWebAPI.Service
 
             return foo;
         }
-        public APIResult SentCommandtoMCSByModel(IConfiguration _configuration, ILogger _logger, string _model, List<string> args)
+        public APIResult SentCommandtoMCSByModel(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _model, List<string> args)
         {
             APIResult foo;
             bool bResult = false;
@@ -1475,9 +1975,32 @@ namespace RTDWebAPI.Service
             HttpClient client;
             HttpResponseMessage response;
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+            JObject jRespData = new JObject();
+            string _tmpKey = "";
+
             try
             {
-                _logger.Info(string.Format("Run Function [{0}]: Model is {1}", tmpFuncName, _model));
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
+                if (_keyRTDEnv.Equals("UAT"))
+                {
+                    foo = new APIResult()
+                    {
+                        Success = true,
+                        State = "OK",
+                        Message = "Pass. It's UAT Env"
+                    };
+
+                    return foo;
+                }
+
+                //_logger.Info(string.Format("Run Function [{0}]: Model is {1}", tmpFuncName, _model));
                 client = GetHttpClient(_configuration, "");
                 // Add an Accept header for JSON format.
                 // 為JSON格式添加一個Accept表頭
@@ -1486,6 +2009,7 @@ namespace RTDWebAPI.Service
 
                 Uri gizmoUri = null;
                 string strGizmo = "{ }";
+                _tmpKey = _model;
 
                 switch (_model.ToUpper())
                 {
@@ -1506,6 +2030,11 @@ namespace RTDWebAPI.Service
                         tmpModel.HoldCode = args[10];
                         tmpModel.TurnRatio = float.Parse(args[11]);
                         tmpModel.EOTD = args[12];
+                        tmpModel.HoldReas = args[13];
+                        tmpModel.POTD = args[14];
+                        tmpModel.WaferLot = args[15];
+                        tmpModel.Quantity = int.Parse(args[16]);
+                        tmpModel.Total = int.Parse(args[17]);
 
                         gizmoUri = null;
                         strGizmo = System.Text.Json.JsonSerializer.Serialize<InfoUpdate>(tmpModel);
@@ -1518,6 +2047,57 @@ namespace RTDWebAPI.Service
                         gizmoUri = null;
                         strGizmo = System.Text.Json.JsonSerializer.Serialize<EquipmentStatusSync>(tmpEqpSync);
                         break;
+                    case "MANUALCHECKIN":
+                        remoteCmd = string.Format("api/{0}", _model);
+                        ManualCheckIn tmpManualCheckin = new ManualCheckIn();
+
+                        tmpManualCheckin.CarrierID = args[0];
+                        tmpManualCheckin.LotID = args[1];
+                        tmpManualCheckin.PortID = args[2];
+                        tmpManualCheckin.Quantity = int.Parse(args[3]);
+                        tmpManualCheckin.Total = int.Parse(args[4]);
+                        tmpManualCheckin.UserID = args[5];
+                        tmpManualCheckin.Pwd = args[6];
+
+                        gizmoUri = null;
+                        strGizmo = System.Text.Json.JsonSerializer.Serialize<ManualCheckIn>(tmpManualCheckin);
+
+                        _logger.Info(strGizmo);
+
+                        break;
+                    case "GETDEVICEINFO":
+                        remoteCmd = string.Format("api/{0}", _model);
+                        DeviceInfo tmpDeviceInfo = new DeviceInfo();
+
+                        tmpDeviceInfo.DeviceID = args[0];
+
+                        gizmoUri = null;
+                        strGizmo = System.Text.Json.JsonSerializer.Serialize<DeviceInfo>(tmpDeviceInfo);
+
+                        break;
+                    case "BATCH":
+                        remoteCmd = string.Format("api/{0}", _model);
+                        Batch tmpBatch = new Batch();
+
+                        tmpBatch.EQPID = args[0];
+                        tmpBatch.CarrierID = args[1];
+                        tmpBatch.TotalFoup = int.Parse(args[2]);
+
+                        gizmoUri = null;
+                        strGizmo = System.Text.Json.JsonSerializer.Serialize<Batch>(tmpBatch);
+
+                        break;
+                    case "GETCOMMANDLIST":
+                        remoteCmd = string.Format("api/{0}", _model);
+                        CommandList tmpCommandList = new CommandList();
+
+                        tmpCommandList.CommandID = args[0];
+
+                        gizmoUri = null;
+                        strGizmo = System.Text.Json.JsonSerializer.Serialize<CommandList>(tmpCommandList);
+                        //strGizmo = "";
+
+                        break;
                     default:
                         remoteCmd = string.Format("api/{0}", _model);
                         break;
@@ -1525,37 +2105,131 @@ namespace RTDWebAPI.Service
 
                 response = new HttpResponseMessage();
 
-                var gizmo = JObject.Parse(strGizmo);
-                response = client.PostAsJsonAsync(remoteCmd, gizmo).Result;
+                if (strGizmo.Equals(""))
+                {
+                    response = client.PostAsJsonAsync(remoteCmd, strGizmo).Result;
+                }
+                else
+                {
+                    bool _tmpConvert = false;
+                    try {
+                        _tmpConvert = true;
+                        var gizmo = JObject.Parse(strGizmo);
+                        _logger.Info(string.Format("Send Command by JObject.Parse.[{0}]", gizmo.ToString()));
+
+                        response = client.PostAsJsonAsync(remoteCmd, gizmo).Result;
+
+                        tmpMsg = string.Format("MCS response is [{0}] [{1}]", response.IsSuccessStatusCode.ToString(), response.Content.ToString());
+                        _logger.Info(tmpMsg);
+
+                    }
+                    catch(Exception ex) { _tmpConvert = false; }
+
+                    try
+                    {
+                        if (!_tmpConvert)
+                        {
+                            _tmpConvert = true;
+                            string sGizmo = JsonConvert.SerializeObject(strGizmo);
+
+                            response = client.PostAsJsonAsync(remoteCmd, sGizmo).Result;
+                            _logger.Info(string.Format("Send Command by JsonConvert.SerializeObject.[{0}]", sGizmo));
+                        }
+                    }
+                    catch (Exception ex) { _tmpConvert = false; }
+
+                    if (!_tmpConvert)
+                    {
+                        _tmpConvert = true;
+                        _logger.Info(string.Format("Send Command by JsonSerializer.Serialize<ManualCheckIn>.[{0}]", strGizmo));
+
+                        response = client.PostAsJsonAsync(remoteCmd, strGizmo).Result;
+                    }
+                }
+
+                var respContent = response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
                 {
                     gizmoUri = response.Headers.Location;
                     bResult = true;
                     tmpState = "OK";
-                    tmpMsg = "";
+                    //tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.ReasonPhrase);
+
+                    if (_model.ToUpper().Equals("GETDEVICEINFO"))
+                    {
+                        string tmpResult = respContent.Result;
+                        APIResponse tmpResponse = new APIResponse(tmpResult);
+                        jRespData = tmpResponse.Data;
+
+                        _logger.Info(string.Format("APIResponse. [{0}][{1}][{2}][{3}]", tmpResponse.Success, tmpResponse.State, tmpResponse.ErrorCode, tmpResponse.Message));
+                    }
+                    else if (_model.ToUpper().Equals("GETCOMMANDLIST"))
+                    {
+                        string tmpResult = respContent.Result;
+                        APIResp tmpResponse = new APIResp(tmpResult);
+                        //jRespData = tmpResponse.Data;
+
+                        _logger.Info(string.Format("APIResp. [{0}][{1}][{2}][{3}]", tmpResponse.Success, tmpResponse.State, tmpResponse.ErrorCode, tmpResponse.Message));
+                    }
+                    else
+                    {
+                        string tmpResult = respContent.Result;
+                        APIResponse tmpResponse = new APIResponse(tmpResult);
+                        jRespData = tmpResponse.Data;
+                        tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.ReasonPhrase);
+
+                        _logger.Info(string.Format("APIResponse. [{0}][{1}][{2}][{3}]", tmpResponse.Success, tmpResponse.State, tmpResponse.ErrorCode, tmpResponse.Message));
+                    }
                 }
                 else
                 {
                     //Console.WriteLine("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    string tmpResult = respContent.Result;
+                    APIResponse tmpResponse = new APIResponse(tmpResult);
+                    jRespData = tmpResponse.Data;
+
                     bResult = false;
                     tmpState = "NG";
-                    tmpMsg = string.Format("State Code : {0}, Reason : {1}.", response.StatusCode, response.ReasonPhrase);
+                    tmpMsg = string.Format("State Code : {0}[{1}], Reason : {2}.", tmpState, response.StatusCode, response.ReasonPhrase);
+
+                    _logger.Info(tmpMsg);
                 }
+
+                if (!_model.ToUpper().Equals("INFOUPDATE"))
+                    _logger.Info(tmpMsg);
 
                 foo = new APIResult()
                 {
                     Success = bResult,
                     State = tmpState,
-                    Message = tmpMsg
+                    Message = tmpMsg,
+                    Data = jRespData
                 };
 
                 client.Dispose();
                 response.Dispose();
+                respContent = null;
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                _logger.Info(string.Format("ArgumentOutOfRangeException [{0}]: ex.Message [{1}]", tmpFuncName, ex.Message));
+
+                foo = new APIResult()
+                {
+                    Success = false,
+                    State = "NG",
+                    Message = ex.Message
+                };
             }
             catch (Exception ex)
             {
                 _logger.Info(string.Format("Exception [{0}]: ex.Message [{1}]", tmpFuncName, ex.Message));
+
+                string[] _argvs = new string[] { _tmpKey, "", "", _configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", "30100")] };
+                if (CallRTDAlarm(_dbTool, 30100, _argvs))
+                { }
+
                 foo = new APIResult()
                 {
                     Success = false,
@@ -1564,7 +2238,7 @@ namespace RTDWebAPI.Service
                 };
             }
 
-            _logger.Info(string.Format("[{0}]: Result is {1}, Reason : [{2}]", tmpFuncName, foo.State, foo.Message));
+            //_logger.Info(string.Format("[{0}]: Result is {1}, Reason : [{2}]", tmpFuncName, foo.State, foo.Message));
 
             return foo;
         }
@@ -1578,9 +2252,29 @@ namespace RTDWebAPI.Service
             HttpClient client;
             HttpResponseMessage response;
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
 
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
+                if (_keyRTDEnv.Equals("UAT"))
+                {
+                    foo = new APIResult()
+                    {
+                        Success = true,
+                        State = "OK",
+                        Message = "Pass. It's UAT Env"
+                    };
+
+                    return foo;
+                }
+
                 client = GetHttpClient(_configuration, "");
                 client.Timeout = TimeSpan.FromSeconds(60);
                 // Add an Accept header for JSON format.
@@ -1637,6 +2331,16 @@ namespace RTDWebAPI.Service
 
                 client.Dispose();
                 response.Dispose();
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                _logger.Info(string.Format("ArgumentOutOfRangeException [{0}]: ex.Message [{1}]", "SentAbortOrCancelCommandtoMCS", ex.Message));
+                foo = new APIResult()
+                {
+                    Success = false,
+                    State = "NG",
+                    Message = ex.Message
+                };
             }
             catch (Exception ex)
             {
@@ -1738,6 +2442,13 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
+            dr = null;
 
             return tmpLotId;
         }
@@ -1965,12 +2676,22 @@ namespace RTDWebAPI.Service
             string tmpStage = "";
             string tmpPartId = "";
             List<string> lstPortIDs = new List<string>();
+            string _args = "";
+
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
 
             try
             {
                 DataTable dt = null;
                 DataTable dtTemp = null;
                 DataRow[] dr = null;// strPortModel
+
+                _keyRTDEnv = configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = configuration[_keyOfEnv] is null ? "workinprocess_sch" : configuration[_keyOfEnv];
 
                 if (_oEventQ.EventName.Equals("CommandStatusUpdate") || _oEventQ.EventName.Equals("CarrierLocationUpdate"))
                 {
@@ -1993,6 +2714,9 @@ namespace RTDWebAPI.Service
                 string sql = "";
                 bool bHaveEQP = false;
                 bool bKey = false;
+                string rtsMachineState = "";
+                string rtsCurrentState = "";
+                string rtsDownState = "";
 
                 foreach (string Equip in _lstEquipment)
                 {
@@ -2020,24 +2744,44 @@ namespace RTDWebAPI.Service
                             if (!strEquip.Equals(""))
                             { bHaveEQP = true; }
 
+                            if (dt.Rows[0]["ISLOCK"].ToString().Equals("1"))
+                            {
+                                //其它Command已指定, 直接跳過, 防止永遠派不出指令
+                                continue;
+                            }
+
+                            //取RTS Equipment Status
+                            dtTemp = _dbTool.GetDataTable(_BaseDataService.GetRTSEquipStatus(GetExtenalTables(configuration, "SyncExtenalData", "RTSEQSTATE"), Equip));
+                            if (dtTemp.Rows.Count > 0)
+                            {
+                                //machine_state, curr_status, down_state
+                                //rtsMachineState, rtsCurrentState, rtsDownState
+                                rtsMachineState = dtTemp.Rows[0]["machine_state"].ToString();
+                                rtsCurrentState = dtTemp.Rows[0]["curr_status"].ToString();
+                                rtsDownState = dtTemp.Rows[0]["down_state"].ToString();
+                            }
+
                             //檢查狀態 Current Status 需要為UP
-                            if (dt.Rows[0]["CURR_STATUS"].ToString().Equals("UP"))
+                            if (rtsCurrentState.Equals("UP"))
                             {
                                 //可用
-                                strEquip = dt.Rows[0]["EQUIPID"].ToString();
+                                strEquip = Equip;
                             }
-                            else if (dt.Rows[0]["CURR_STATUS"].ToString().Equals("PM"))
+                            else if (rtsCurrentState.Equals("PM"))
                             {
 
                             }
-                            else if (dt.Rows[0]["CURR_STATUS"].ToString().Equals("DOWN"))
+                            else if (rtsCurrentState.Equals("DOWN"))
                             {
-                                if (dt.Rows[0]["DOWN_STATE"].ToString().Equals("IDLE"))
+                                if (rtsDownState.Equals("IDLE"))
                                 {
-
+                                    strEquip = Equip;
                                 }
-                                if (dt.Rows[0]["DOWN_STATE"].ToString().Equals("DOWN"))
+                                if (rtsDownState.Equals("DOWN"))
                                 {
+                                    tmpMsg = String.Format("[BuildTransferCommands][{0}][RTS Status Issue: machine state is {1}, current state is {2}, down state is {3}]", "GetRTSEquipStatus", rtsMachineState, rtsCurrentState, rtsDownState);
+                                    _logger.Debug(tmpMsg);
+
                                     continue;
                                 }
                             }
@@ -2064,7 +2808,7 @@ namespace RTDWebAPI.Service
                                     string tmpCurrPort = drCurr["Port_Id"].ToString().Trim();
 
                                     //20230413V1.2 Modify by Vance
-                                    sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(Equip, tmpCurrPort));
+                                    sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(Equip, tmpCurrPort, tableOrder));
                                     dtTemp = _dbTool.GetDataTable(sql);
 
                                     if (dtTemp.Rows.Count > 0)
@@ -2130,7 +2874,7 @@ namespace RTDWebAPI.Service
                     {
                         if (ThreadLimitTraffice(_threadControll, strEquip, 3, "ss", ">"))
                         {
-                            _threadControll[strEquip] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
+                            _threadControll[strEquip] = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                         }
                         else
                         {
@@ -2140,7 +2884,7 @@ namespace RTDWebAPI.Service
                     else
                     {
                         if (!_threadControll.ContainsKey(strEquip))
-                            _threadControll.Add(strEquip, DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+                            _threadControll.Add(strEquip, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
                         else
                             return bResult;
                     }
@@ -2179,19 +2923,62 @@ namespace RTDWebAPI.Service
                         //這裡可以隨便填，不是很重要
                         tmpMailMsg.From = new MailAddress(configuration["MailSetting:username"], configuration["MailSetting:EntryBy"], Encoding.UTF8);
 
+                        RTDAlarms rtdAlarms = new RTDAlarms();
+                        rtdAlarms.UnitType = "";
+                        rtdAlarms.UnitID = "";
+                        rtdAlarms.Level = "";
+                        rtdAlarms.Code = 0;
+                        rtdAlarms.Cause = "";
+                        rtdAlarms.SubCode = "";
+                        rtdAlarms.Detail = "";//SET , RESET
+                        rtdAlarms.CommandID = "";//(KEY: Command ID, Machine, eRack
+                        rtdAlarms.Params = "";
+                        rtdAlarms.Description = "";
+                        //IDX, unitType, unitID, level, code, cause, subCode, detail, commandID, params, description, new, createdAt, last_updated
+                        //3509	3871	System	RTD	Issue	30001	Dispatch overtime	2	Auto Hold Lot	83757482.1			0	28/7/2023 6:52:47 AM	28/7/2023 7:32:13 AM
+                        //3510    3787    Rack ERS01   Error   20051   Erack off line  0   SET ERS01           0   21 / 7 / 2023 9:15:59 PM    24 / 7 / 2023 1:44:08 AM
                         switch (resultCode)
                         {
                             case "1001":
                                 //不同客戶後的第一批
-                                tmpSmsMsg = string.Format("LOT {0} NEED TO SETUP NOW. EQUIP DOWN FROM RTS.", lotid);
+                                //tmpSmsMsg = string.Format("LOT {0} NEED TO SETUP NOW. EQUIP DOWN FROM RTS.", lotid);
 
                                 /* 上面3個參數分別是發件人地址（可以隨便寫），發件人姓名，編碼*/
+                                /*
                                 tmpMailMsg.Subject = "Device Setup Alert";//郵件標題
                                 tmpMailMsg.SubjectEncoding = Encoding.UTF8;//郵件標題編碼
                                 tmpMailMsg.Body = string.Format("LOT {0} ({1}) NEED TO SETUP NOW. EQUIP DOWN FROM RTS.", lotid, tmpPartId); //郵件內容
                                 tmpMailMsg.BodyEncoding = Encoding.UTF8;//郵件內容編碼 
                                 tmpMailMsg.IsBodyHtml = true;//是否是HTML郵件 
-                                bAlarm = true;
+                                bAlarm = true;*/
+
+                                tmpSmsMsg = "lotid:{0}$equipid:{1}$partid:{2}$customername:{3}$stage:{4}";
+
+                                try
+                                {
+                                    List<string> lstParams = new List<string>();
+                                    lstParams.Add(string.Format("\"lotid\":\"{0}\"", lotid));
+                                    lstParams.Add(string.Format("\"equipid\":\"{0}\"", strEquip));
+                                    lstParams.Add(string.Format("\"partid\":\"{0}\"", tmpPartId));
+                                    lstParams.Add(string.Format("\"customername\":\"{0}\"", tmpCustomerName));
+                                    lstParams.Add(string.Format("\"stage\":\"{0}\"", tmpStage));
+
+                                    rtdAlarms.UnitType = "System";
+                                    rtdAlarms.UnitID = "RTD";
+                                    rtdAlarms.Level = "ALARM";
+                                    rtdAlarms.Code = int.Parse(resultCode);
+                                    rtdAlarms.Cause = "Device Setup Alert";
+                                    rtdAlarms.SubCode = "";
+                                    rtdAlarms.Detail = "SET";//SET , RESET
+                                    rtdAlarms.CommandID = strEquip;//(KEY: Command ID, Machine, eRack
+                                    //rtdAlarms.Params = JsonConvert.SerializeObject(lstParams);
+                                    string tmpAAA = JsonConvert.SerializeObject(lstParams);
+                                    rtdAlarms.Params = tmpAAA;
+                                    string tmpRTDAlarm = configuration["RTDAlarm:Condition"] is null ? "eMail:false$SMS:false$repeat:false$hours:0$mints:10" : configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", resultCode)] is null ? configuration["RTDAlarm:Condition"] : configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", resultCode)];
+                                    rtdAlarms.EventTrigger = tmpRTDAlarm;
+                                    //rtdAlarms.EventTrigger = configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:false$repeat:false$hours:0$mints:10" : configuration["RTDAlarm:Condition"];
+                                } catch { }
+
                                 break;
                             case "1002":
                                 string tmpNextLot = GetLotIdbyCarrier(_dbTool, GetCarrierByPortId(_dbTool, tmpPartId), out tmpMsg);
@@ -2204,22 +2991,78 @@ namespace RTDWebAPI.Service
                                         tmpNextPartId = dt.Rows[0]["PartId"].ToString().Trim();
                                 }
                                 //同客戶的最後一批
-                                tmpSmsMsg = string.Format("NEXT LOT {0} NEED TO SETUP AFTER CURRENT LOT END.", tmpNextLot);
+                                //tmpSmsMsg = string.Format("NEXT LOT {0} NEED TO SETUP AFTER CURRENT LOT {1}({2}) END.", tmpNextLot, lotid, tmpPartId);
 
                                 /* 上面3個參數分別是發件人地址（可以隨便寫），發件人姓名，編碼*/
+                                /*
                                 tmpMailMsg.Subject = "Setup Pre-Alert";//郵件標題
                                 tmpMailMsg.SubjectEncoding = Encoding.UTF8;//郵件標題編碼
-                                tmpMailMsg.Body = string.Format("NEXT LOT {0} ({1}) NEED TO SETUP AFTER CURRENT LOT {2} ({3}) END.", tmpNextLot, tmpNextPartId, lotid, tmpPartId); //郵件內容
+                                tmpMailMsg.Body = string.Format(@"{0} 
+Tool: {5}
+Next Lot: ({1})
+Current Lot {2}
+Mfg Device: ({4})
+Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, strEquip); //郵件內容
                                 tmpMailMsg.BodyEncoding = Encoding.UTF8;//郵件內容編碼 
                                 tmpMailMsg.IsBodyHtml = true;//是否是HTML郵件 
 
                                 bAlarm = true;
+                                */
+
+                                tmpSmsMsg = "lotid:{0}$equipid:{1}$partid:{2}$customername:{3}$stage:{4}$nextlot:{5}$nextpart:{6}";
+
+                                try {
+                                    List<string> lstParams = new List<string>();
+                                    lstParams.Add(string.Format("\"lotid\":\"{0}\"", lotid));
+                                    lstParams.Add(string.Format("\"equipid\":\"{0}\"", strEquip));
+                                    lstParams.Add(string.Format("\"partid\":\"{0}\"", tmpPartId));
+                                    lstParams.Add(string.Format("\"customername\":\"{0}\"", tmpCustomerName));
+                                    lstParams.Add(string.Format("\"stage\":\"{0}\"", tmpStage));
+                                    lstParams.Add(string.Format("\"nextlot\":\"{0}\"", tmpNextLot));
+                                    lstParams.Add(string.Format("\"nextpart\":\"{0}\"", tmpNextPartId));
+
+                                    rtdAlarms.UnitType = "System";
+                                    rtdAlarms.UnitID = "RTD";
+                                    rtdAlarms.Level = "Warning";
+                                    rtdAlarms.Code = int.Parse(resultCode);
+                                    rtdAlarms.Cause = "Setup Pre-Alert";
+                                    rtdAlarms.SubCode = "";
+                                    rtdAlarms.Detail = "SET";//SET , RESET
+                                    rtdAlarms.CommandID = strEquip;//(KEY: Command ID, Machine, eRack
+                                    //rtdAlarms.Params = String.Format(tmpSmsMsg, lotid, strEquip, tmpPartId, tmpCustomerName, tmpStage, tmpNextLot, tmpNextPartId);
+                                    rtdAlarms.Params = JsonConvert.SerializeObject(lstParams);
+                                    string tmpRTDAlarm = configuration["RTDAlarm:Condition"] is null ? "eMail:false$SMS:false$repeat:false$hours:0$mints:10" : configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", resultCode)] is null ? configuration["RTDAlarm:Condition"] : configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", resultCode)];
+                                    rtdAlarms.EventTrigger = tmpRTDAlarm;
+                                    //rtdAlarms.EventTrigger = configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : configuration["RTDAlarm:Condition"];
+
+                                } catch { }
+
                                 break;
                             default:
                                 bAlarm = false;
                                 break;
                         }
 
+
+                        if (!rtdAlarms.UnitType.Equals(""))
+                        {
+                            _args = string.Format("{0},{1},{2},{3}", rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms.SubCode, rtdAlarms.CommandID);
+                            sql = string.Format(_BaseDataService.QueryExistRTDAlarms(_args));
+                            dt = _dbTool.GetDataTable(sql);
+
+                            if (dt.Rows.Count > 0)
+                            {
+                                tmpMsg = string.Format("[QueryExistRTDAlarms][{0}]", _args);
+                                _logger.Info(tmpMsg);
+                            }
+                            else
+                            {
+                                tmpSql = _BaseDataService.InsertRTDAlarm(rtdAlarms);
+                                _dbTool.SQLExec(tmpSql, out tmpMsg, true);
+                            }
+                        }
+
+                        /*
                         if (bAlarm)
                         {
                             ///發送SMS 
@@ -2257,6 +3100,7 @@ namespace RTDWebAPI.Service
                                 _logger.Debug(tmpMsg);
                             }
                         }
+                        */
                     }
                     else
                     { }
@@ -2291,16 +3135,22 @@ namespace RTDWebAPI.Service
             bool _DebugMode = true;
             bool bStateChange = false;
             bool bStageIssue = false;
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
 
             try
             {
                 DataTable dtTemp = null;
+                DataTable dtTemp2 = null;
                 DataTable dtPortsInfo = null;
                 DataTable dtCarrierInfo = null;
                 DataTable dtAvaileCarrier = null;
                 DataTable dtWorkgroupSet = null;
                 DataTable dtLoadPortCarrier = null;
                 DataTable dtWorkInProcessSch;
+                DataTable dtPrepareNextWorkgroup = null;
+                DataTable dtCurrentWorkgroupProcess = null;
                 DataRow[] drIn = null;
                 DataRow[] drOut = null;
                 DataRow[] drCarrierData = null;
@@ -2310,16 +3160,84 @@ namespace RTDWebAPI.Service
                 string sql = "";
                 string lotID = "";
                 string CarrierID = "";
-                string MatalRingCarrier = "";
+                string UnloadCarrierID = "";
+                string MetalRingCarrier = "";
                 int Quantity = 0;
+                string vStage = "";
+                string vStage2 = "";
+                string rtsMachineState = "";
+                string rtsCurrentState = "";
+                string rtsDownState = "";
+                string rtdEqpCustDevice = "";
+                bool isManualMode = false;
+                bool _expired = false;
+                bool _effective = false;
+
+                bool useFaileRack = false;
+                string faileRack = "";
+                string outeRack = "";
+                string ineRack = "";
+                string tmpRack = "";
+                string _carrierID = "";
+                int _Workgroup_priority = 30;
+                int _Priority = 30;
+
+                bool bNearComplete = false;
+                string _commandState = "";
+
+                bool bCustDevice = true;
+                bool bCheckRecipe = true;
+
+                bool bBindWorkgroup = false;
+                bool bPrepareNextWorkgroup = false;
+                string _NextWorkgroup = "";
+                string _Workgroup = "";
+                int _iPrepareQty = 0;
+
+
+                _keyRTDEnv = configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = configuration[_keyOfEnv] is null ? "workinprocess_sch" : configuration[_keyOfEnv];
 
                 _DebugMode = DebugMode;
+
+                try
+                {
+                    if (configuration["NearCompleted:Enable"].ToLower().Equals("true"))
+                        bNearComplete = true;
+                }
+                catch (Exception ex) { }
 
                 //防止同一機台不同線程執行
                 dtTemp = _dbTool.GetDataTable(_BaseDataService.QueryEquipLockState(_Equip));
                 if (dtTemp.Rows.Count <= 0)
                 {
+                    if (_DebugMode)
+                    {
+                        _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] QueryEquipLockState[{1}]", _oEventQ.EventName, _Equip));
+                    }
+
                     _dbTool.SQLExec(_BaseDataService.LockEquip(_Equip, true), out tmpMsg, true);
+                }
+
+                //取RTS Equipment Status
+                dtTemp = _dbTool.GetDataTable(_BaseDataService.GetRTSEquipStatus(GetExtenalTables(configuration, "SyncExtenalData", "RTSEQSTATE"), _Equip));
+                if (dtTemp.Rows.Count > 0)
+                {
+                    //machine_state, curr_status, down_state
+                    //rtsMachineState, rtsCurrentState, rtsDownState
+                    rtsMachineState = dtTemp.Rows[0]["machine_state"].ToString();
+                    rtsCurrentState = dtTemp.Rows[0]["curr_status"].ToString();
+                    rtsDownState = dtTemp.Rows[0]["down_state"].ToString();
+                }
+                else
+                {
+                    if (_DebugMode)
+                    {
+                        _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] GetRTSEquipStatus[{1}] _Out", _oEventQ.EventName, _Equip));
+                    }
+                    return false; //RTS找不到, 即不繼續產生指令
                 }
 
                 //先取得Equipment 的Ports Status
@@ -2362,21 +3280,50 @@ namespace RTDWebAPI.Service
                         }
                         bStateChange = true;
                         break;
+                    case "EquipmentPortStatusUpdate":
+                        evtObject2 = (NormalTransferModel)_oEventQ.EventObject;
+                        lotID = evtObject2.LotID;
+
+                        if (evtObject2.CarrierID.Equals(""))
+                        {
+                            sql = string.Format(_BaseDataService.SelectTableCarrierAssociate3ByLotid(lotID));
+                            dtTemp = _dbTool.GetDataTable(sql);
+
+                            if (dtTemp.Rows.Count > 0)
+                            {
+                                UnloadCarrierID = dtTemp.Rows[0]["carrier_id"].ToString();
+                            }
+                        }
+                        else
+                        {
+                            UnloadCarrierID = evtObject2.CarrierID;
+                        }
+
+                        if (_DebugMode)
+                        {
+                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] {1} / {2}", _oEventQ.EventName, _Equip, lotID));
+                        }
+                        bStateChange = true;
+                        break;
                     default:
                         break;
                 }
-
+                
                 //站點不當前站點不同, 不產生指令
-                if (!lotID.Equals(""))
+                if (!lotID.Equals("") && !lotID.Equals("*"))
                 {
+                    vStage = "";
                     sql = _BaseDataService.CheckLotStage(configuration["CheckLotStage:Table"], lotID);
                     dtTemp = _dbTool.GetDataTable(sql);
 
                     if (dtTemp.Rows.Count > 0)
                     {
+                        vStage = dtTemp.Rows[0]["stage1"].ToString();
+                        vStage2 = dtTemp.Rows[0]["stage1"].ToString().Equals("") ? dtTemp.Rows[0]["stage2"].ToString() : dtTemp.Rows[0]["stage1"].ToString();
+
                         if (!dtTemp.Rows[0]["stage1"].ToString().Equals(dtTemp.Rows[0]["stage2"].ToString()))
                         {
-                            _logger.Debug(string.Format("---LotID= {0}, RTD_Stage={1}, MES_Stage={2}, RTD_State={3}, MES_State={4}", lotID, dtTemp.Rows[0]["stage1"].ToString(), dtTemp.Rows[0]["stage2"].ToString(), dtTemp.Rows[0]["state1"].ToString(), dtTemp.Rows[0]["state2"].ToString()));
+                            _logger.Debug(string.Format("Base Lot Info: LotID= {0}, RTD_Stage={1}, MES_Stage={2}, RTD_State={3}, MES_State={4} _", lotID, dtTemp.Rows[0]["stage1"].ToString(), dtTemp.Rows[0]["stage2"].ToString(), dtTemp.Rows[0]["state1"].ToString(), dtTemp.Rows[0]["state2"].ToString()));
                             if (configuration["AppSettings:Work"].ToUpper().Equals("EWLB"))
                             {
                                 if (bStateChange)
@@ -2386,7 +3333,7 @@ namespace RTDWebAPI.Service
                                 else
                                 {
                                     //_logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] lot [{1}] stage not correct. can not build command.", _oEventQ.EventName, lotID));
-                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] lot [{1}] Check Stage Failed.", _oEventQ.EventName, lotID));
+                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] lot [{1}] Check Stage Failed. _Out", _oEventQ.EventName, lotID));
                                     //if (configuration["AppSettings:Work"].ToUpper().Equals("EWLB"))
                                     return result;
                                 }
@@ -2407,6 +3354,27 @@ namespace RTDWebAPI.Service
 
                 if (dtPortsInfo.Rows.Count <= 0)
                 { return result; }
+                else
+                {
+                    try
+                    {
+                        try
+                        {
+                            _logger.Debug(string.Format("[GetEquipInfo 1]: EQUIPID[{0}], {1}/{2}/{3}/{4}", _Equip, dtPortsInfo.Rows[0]["CustDevice"].ToString(), dtPortsInfo.Rows[0]["MANUALMODE"].ToString(), dtPortsInfo.Rows[0]["Expired"].ToString(), dtPortsInfo.Rows[0]["Effective"].ToString()));
+                        }
+                        catch (Exception ex) { }
+
+                        rtdEqpCustDevice = dtPortsInfo.Rows[0]["CustDevice"] is null ? "" : dtPortsInfo.Rows[0]["CustDevice"].ToString().Trim();
+                        isManualMode = dtPortsInfo.Rows[0]["MANUALMODE"] is null ? false : dtPortsInfo.Rows[0]["MANUALMODE"].ToString().Equals("1") ? true : false;
+                        _expired = dtPortsInfo.Rows[0]["Expired"] is null ? false : dtPortsInfo.Rows[0]["Expired"].ToString().Equals("1") ? true : false;
+                        _effective = dtPortsInfo.Rows[0]["Effective"] is null ? false : dtPortsInfo.Rows[0]["Effective"].ToString().Equals("1") ? true : false;
+                        _Priority = dtPortsInfo.Rows[0]["prio"] is null ? 20 : int.Parse(dtPortsInfo.Rows[0]["prio"].ToString());
+
+                        _logger.Debug(string.Format("[GetEquipInfo 2]: EQUIPID[{0}], {1}/{2}/{3}/{4}", _Equip, rtdEqpCustDevice, isManualMode, _expired, _effective));
+                    }
+                    catch (Exception ex)
+                    { }
+                }
 
                 //上機失敗皆回(in erack)
                 NormalTransferModel normalTransfer = new NormalTransferModel();
@@ -2418,6 +3386,10 @@ namespace RTDWebAPI.Service
                 int iCheckState = 0;
                 bool bIsMatch = true;
                 string EquipCustDevice = "";
+                bool bPortDisabled = false;
+                int iPrepareCustDeviceNo = 0;
+                int iProcessCustDeviceNo = 0;
+                int iProcessNextWorkgroup = 0;
 
                 //input: 空的 normalTransfer, dtPortsInfo, 
 
@@ -2436,6 +3408,7 @@ namespace RTDWebAPI.Service
                 int iReplace = 0;
                 string sPortState = "";
                 int iPortState = 0;
+                bool _OnlyUnload = false;
                 foreach (DataRow drRecord in dtPortsInfo.Rows)
                 {
                     //dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString()));
@@ -2445,25 +3418,264 @@ namespace RTDWebAPI.Service
                     lstTransfer = new TransferList();
                     dtAvaileCarrier = null;
                     dtLoadPortCarrier = null;
-                    
+                    string _sql = "";
+                    DataTable dtCustDevice = null;
+                    string sPortID = "";
+                    string _CarrierTypebyPort = "";
+
                     try
                     {
-                        dtTemp = _dbTool.GetDataTable(_BaseDataService.GetEquipCustDevice(drRecord["EQUIPID"].ToString()));
+                        bPortDisabled = drRecord["DISABLE"] is not null ? drRecord["DISABLE"].ToString().Equals("1") ? true : false : false;
+
+                        _logger.Debug(string.Format("[GetEquipCustDevice]: Flag In"));
+                        _logger.Debug(string.Format("[GetEquipCustDevice]: EQUIPID: {0}", drRecord["EQUIPID"].ToString()));
+
+                        if (bPortDisabled)
+                            continue;
+
+                        _sql = _BaseDataService.GetEquipCustDevice(drRecord["EQUIPID"].ToString());
+                        _logger.Debug(string.Format("[GetEquipCustDevice]: SQL: {0}", _sql));
+                        dtCustDevice = _dbTool.GetDataTable(_sql);
+                        _logger.Debug(string.Format("[GetEquipCustDevice]: Got DtTemp"));
+
+                        iPortState = GetPortStatus(dtPortsInfo, drRecord["port_id"].ToString(), out sPortState);
+                        sPortID = drRecord["port_id"].ToString();
+
+                        if (!iPortState.ToString().Equals("3") || !iPortState.ToString().Equals("2"))
+                        {
+                            if (dtCustDevice.Rows.Count > 0)
+                            {
+                                _logger.Debug(string.Format("[GetEquipCustDevice]: {0}, GetEquipCustDevice.Count: {1} ", drRecord["EQUIPID"].ToString(), dtCustDevice.Rows.Count));
+
+                                foreach (DataRow drTemp in dtCustDevice.Rows)
+                                {
+                                    EquipCustDevice = drTemp["device"].ToString().Trim();
+                                    _logger.Debug(string.Format("[GetEquipCustDevice]: {0}, [CustDevice]: {1} ", drRecord["EQUIPID"].ToString(), EquipCustDevice));
+                                    if (!EquipCustDevice.Equals(""))
+                                        break;
+                                }
+
+                                if (!rtdEqpCustDevice.Equals(EquipCustDevice))
+                                {
+                                    sql = _BaseDataService.UpdateCustDeviceByEquipID(drRecord["EQUIPID"].ToString(), EquipCustDevice);
+                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                }
+                                //EquipCustDevice = dtTemp.Rows[0]["device"].ToString();
+                                //_logger.Debug(string.Format("[GetEquipCustDevice]: {0}, [CustDevice]: {1} ", drRecord["EQUIPID"].ToString(), EquipCustDevice));
+                            }
+                        }
+
+                        dtTemp = _dbTool.GetDataTable(_BaseDataService.GetCarrierTypeByPort(sPortID));
                         if (dtTemp.Rows.Count > 0)
                         {
-                            EquipCustDevice = dtTemp.Rows[0]["device"].ToString();
-                            _logger.Debug(string.Format("[GetEquipCustDevice]: {0}, [CustDevice]: {1} ", drRecord["EQUIPID"].ToString(), EquipCustDevice));
+                            _CarrierTypebyPort = dtTemp.Rows[0]["command_type"].ToString();
                         }
-                    }catch(Exception ex)
+                    }
+                    catch(Exception ex)
                     {
-                        _logger.Debug(string.Format("[GetEquipCustDevice][{0}] {1} , Exception: {2}", drRecord["EQUIPID"].ToString(), EquipCustDevice, ex.Message));
+                        _logger.Debug(string.Format("[GetEquipCustDevice][{0}] {1}, {2} , Exception: {3} _Out", drRecord["EQUIPID"].ToString(), EquipCustDevice, _sql, ex.Message));
+
+                        //若無法正確取得EquipCustDevice, 則直接跳出邏輯, 屬於重大異常！不可繼續執行
+                        continue;
                     }
                     //Select Workgroup Set
                     dtWorkgroupSet = _dbTool.GetDataTable(_BaseDataService.SelectWorkgroupSet(drRecord["EQUIPID"].ToString()));
 
+                    if(dtWorkgroupSet.Rows.Count > 0)
+                    {
+                        
+                        try
+                        {
+                            
+                            string _eqpworkgroup = "";
+                            //_maximumqty, _effectiveslot
+                            string _equiprecipe = "";
+                            string _lotrecipe = "";
+                            string _equiprecipeGroup = "";
+                            string _lotrecipeGroup = "";
+
+                            _eqpworkgroup = dtWorkgroupSet.Rows[0]["workgroup"] is null ? "" : dtWorkgroupSet.Rows[0]["workgroup"].ToString();
+
+                            string cdtTemp = string.Format("STAGE='{0}'", vStage);
+                            DataRow[] drWorkgroup = dtWorkgroupSet.Select(cdtTemp);
+
+                            if (drWorkgroup.Length > 0)
+                            {
+                                useFaileRack = drWorkgroup[0]["USEFAILERACK"] is null ? false : drWorkgroup[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                faileRack = drWorkgroup[0]["F_ERACK"] is null ? "" : drWorkgroup[0]["F_ERACK"].ToString();
+                                outeRack = drWorkgroup[0]["OUT_ERACK"] is null ? "" : drWorkgroup[0]["OUT_ERACK"].ToString();
+                                ineRack = drWorkgroup[0]["IN_ERACK"] is null ? "" : drWorkgroup[0]["IN_ERACK"].ToString();
+                                bCustDevice = dtWorkgroupSet.Rows[0]["checkCustDevice"] is not null ? dtWorkgroupSet.Rows[0]["checkCustDevice"].ToString().Equals("1") ? true : false : true;
+                                //bCheckEquipLookupTable = drWorkgroup[0]["CHECKEQPLOOKUPTABLE"] is null ? false : drWorkgroup[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                //_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                //effectiveslot, maximumqty
+                                bCheckRecipe = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                _Workgroup_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                bBindWorkgroup = drWorkgroup[0]["BINDWORKGROUP"] is not null ? drWorkgroup[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                bPrepareNextWorkgroup = drWorkgroup[0]["PREPARENEXTWORKGROUP"] is not null ? drWorkgroup[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                _NextWorkgroup = drWorkgroup[0]["NEXTWORKGROUP"] is null ? "" : drWorkgroup[0]["NEXTWORKGROUP"].ToString();
+                                _iPrepareQty = drWorkgroup[0]["PREPAREQTY"] is not null ? int.Parse(drWorkgroup[0]["PREPAREQTY"].ToString()) : 0;
+                                _Workgroup = drWorkgroup[0]["WORKGROUP"] is null ? "" : drWorkgroup[0]["WORKGROUP"].ToString();
+                            }
+                            else
+                            {
+                                if (!vStage.Equals(vStage2))
+                                {
+                                    //Stage and Stage2 not same 
+                                    cdtTemp = string.Format("STAGE='{0}'", vStage2);
+                                    drWorkgroup = dtWorkgroupSet.Select(cdtTemp);
+
+                                    if (drWorkgroup.Length > 0)
+                                    {
+                                        useFaileRack = drWorkgroup[0]["USEFAILERACK"] is null ? false : drWorkgroup[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                        faileRack = drWorkgroup[0]["F_ERACK"] is null ? "" : drWorkgroup[0]["F_ERACK"].ToString();
+                                        outeRack = drWorkgroup[0]["OUT_ERACK"] is null ? "" : drWorkgroup[0]["OUT_ERACK"].ToString();
+                                        ineRack = drWorkgroup[0]["IN_ERACK"] is null ? "" : drWorkgroup[0]["IN_ERACK"].ToString();
+                                        //bCheckEquipLookupTable = drWorkgroup[0]["CHECKEQPLOOKUPTABLE"] is null ? false : drWorkgroup[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                        //_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                        bCheckRecipe = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        bCustDevice = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        _Workgroup_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                        bBindWorkgroup = drWorkgroup[0]["BINDWORKGROUP"] is not null ? drWorkgroup[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        bPrepareNextWorkgroup = drWorkgroup[0]["PREPARENEXTWORKGROUP"] is not null ? drWorkgroup[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        _NextWorkgroup = drWorkgroup[0]["NEXTWORKGROUP"] is null ? "" : drWorkgroup[0]["NEXTWORKGROUP"].ToString();
+                                        _iPrepareQty = drWorkgroup[0]["PREPAREQTY"] is not null ? int.Parse(drWorkgroup[0]["PREPAREQTY"].ToString()) : 0;
+                                        _Workgroup = drWorkgroup[0]["WORKGROUP"] is null ? "" : drWorkgroup[0]["WORKGROUP"].ToString();
+                                    }
+                                    else
+                                    {
+                                        cdtTemp = string.Format("STAGE='{0}'", "DEFAULT");
+                                        drWorkgroup = dtWorkgroupSet.Select(cdtTemp);
+
+                                        if (drWorkgroup.Length > 0)
+                                        {
+                                            useFaileRack = drWorkgroup[0]["USEFAILERACK"] is null ? false : drWorkgroup[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                            faileRack = drWorkgroup[0]["F_ERACK"] is null ? "" : drWorkgroup[0]["F_ERACK"].ToString();
+                                            outeRack = drWorkgroup[0]["OUT_ERACK"] is null ? "" : drWorkgroup[0]["OUT_ERACK"].ToString();
+                                            ineRack = drWorkgroup[0]["IN_ERACK"] is null ? "" : drWorkgroup[0]["IN_ERACK"].ToString();
+                                            //bCheckEquipLookupTable = drWorkgroup[0]["CHECKEQPLOOKUPTABLE"] is null ? false : drWorkgroup[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                            //_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                            bCheckRecipe = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                            bCustDevice = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                            _Workgroup_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                            bBindWorkgroup = drWorkgroup[0]["BINDWORKGROUP"] is not null ? drWorkgroup[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                            bPrepareNextWorkgroup = drWorkgroup[0]["PREPARENEXTWORKGROUP"] is not null ? drWorkgroup[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                            _NextWorkgroup = drWorkgroup[0]["NEXTWORKGROUP"] is null ? "" : drWorkgroup[0]["NEXTWORKGROUP"].ToString();
+                                            _iPrepareQty = drWorkgroup[0]["PREPAREQTY"] is not null ? int.Parse(drWorkgroup[0]["PREPAREQTY"].ToString()) : 0;
+                                            _Workgroup = drWorkgroup[0]["WORKGROUP"] is null ? "" : drWorkgroup[0]["WORKGROUP"].ToString();
+                                        }
+                                        else
+                                        {
+                                            useFaileRack = dtWorkgroupSet.Rows[0]["USEFAILERACK"] is null ? false : dtWorkgroupSet.Rows[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                            faileRack = dtWorkgroupSet.Rows[0]["F_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["F_ERACK"].ToString();
+                                            outeRack = dtWorkgroupSet.Rows[0]["OUT_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["OUT_ERACK"].ToString();
+                                            ineRack = dtWorkgroupSet.Rows[0]["IN_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["IN_ERACK"].ToString();
+                                            //bCheckEquipLookupTable = dtWorkgroupSet.Rows[0]["CHECKEQPLOOKUPTABLE"] is null ? false : dtWorkgroupSet.Rows[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                            bCheckRecipe = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                            bCustDevice = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                            //_priority = 30;
+                                            _Workgroup_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                            bBindWorkgroup = drWorkgroup[0]["BINDWORKGROUP"] is not null ? drWorkgroup[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                            bPrepareNextWorkgroup = drWorkgroup[0]["PREPARENEXTWORKGROUP"] is not null ? drWorkgroup[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                            _NextWorkgroup = drWorkgroup[0]["NEXTWORKGROUP"] is null ? "" : drWorkgroup[0]["NEXTWORKGROUP"].ToString();
+                                            _iPrepareQty = drWorkgroup[0]["PREPAREQTY"] is not null ? int.Parse(drWorkgroup[0]["PREPAREQTY"].ToString()) : 0;
+                                            _Workgroup = drWorkgroup[0]["WORKGROUP"] is null ? "" : drWorkgroup[0]["WORKGROUP"].ToString();
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    cdtTemp = string.Format("STAGE='{0}'", "DEFAULT");
+                                    drWorkgroup = dtWorkgroupSet.Select(cdtTemp);
+
+                                    if (drWorkgroup.Length > 0)
+                                    {
+                                        useFaileRack = drWorkgroup[0]["USEFAILERACK"] is null ? false : drWorkgroup[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                        faileRack = drWorkgroup[0]["F_ERACK"] is null ? "" : drWorkgroup[0]["F_ERACK"].ToString();
+                                        outeRack = drWorkgroup[0]["OUT_ERACK"] is null ? "" : drWorkgroup[0]["OUT_ERACK"].ToString();
+                                        ineRack = drWorkgroup[0]["IN_ERACK"] is null ? "" : drWorkgroup[0]["IN_ERACK"].ToString();
+                                        //bCheckEquipLookupTable = drWorkgroup[0]["CHECKEQPLOOKUPTABLE"] is null ? false : drWorkgroup[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                        //_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                        bCheckRecipe = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        bCustDevice = drWorkgroup[0]["CHECKCUSTDEVICE"] is null ? false : drWorkgroup[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        _Workgroup_priority = drWorkgroup[0]["prio"] is null ? 20 : int.Parse(drWorkgroup[0]["prio"].ToString());
+                                        bBindWorkgroup = drWorkgroup[0]["BINDWORKGROUP"] is not null ? drWorkgroup[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        bPrepareNextWorkgroup = drWorkgroup[0]["PREPARENEXTWORKGROUP"] is not null ? drWorkgroup[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        _NextWorkgroup = drWorkgroup[0]["NEXTWORKGROUP"] is null ? "" : drWorkgroup[0]["NEXTWORKGROUP"].ToString();
+                                        _iPrepareQty = drWorkgroup[0]["PREPAREQTY"] is not null ? int.Parse(drWorkgroup[0]["PREPAREQTY"].ToString()) : 0;
+                                        _Workgroup = drWorkgroup[0]["WORKGROUP"] is null ? "" : drWorkgroup[0]["WORKGROUP"].ToString();
+                                    }
+                                    else
+                                    {
+                                        useFaileRack = dtWorkgroupSet.Rows[0]["USEFAILERACK"] is null ? false : dtWorkgroupSet.Rows[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                                        faileRack = dtWorkgroupSet.Rows[0]["F_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["F_ERACK"].ToString();
+                                        outeRack = dtWorkgroupSet.Rows[0]["OUT_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["OUT_ERACK"].ToString();
+                                        ineRack = dtWorkgroupSet.Rows[0]["IN_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["IN_ERACK"].ToString();
+                                        //bCheckEquipLookupTable = dtWorkgroupSet.Rows[0]["CHECKEQPLOOKUPTABLE"] is null ? false : dtWorkgroupSet.Rows[0]["CHECKEQPLOOKUPTABLE"].ToString().Equals("1") ? true : false;
+                                        bCheckRecipe = dtWorkgroupSet.Rows[0]["CHECKCUSTDEVICE"] is null ? false : dtWorkgroupSet.Rows[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        bCustDevice = dtWorkgroupSet.Rows[0]["CHECKCUSTDEVICE"] is null ? false : dtWorkgroupSet.Rows[0]["CHECKCUSTDEVICE"].ToString().Equals("1") ? true : false;
+                                        _Workgroup_priority = dtWorkgroupSet.Rows[0]["prio"] is null ? 20 : int.Parse(dtWorkgroupSet.Rows[0]["prio"].ToString());
+                                        bBindWorkgroup = dtWorkgroupSet.Rows[0]["BINDWORKGROUP"] is not null ? dtWorkgroupSet.Rows[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        bPrepareNextWorkgroup = dtWorkgroupSet.Rows[0]["PREPARENEXTWORKGROUP"] is not null ? dtWorkgroupSet.Rows[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                                        _NextWorkgroup = dtWorkgroupSet.Rows[0]["NEXTWORKGROUP"] is null ? "" : dtWorkgroupSet.Rows[0]["NEXTWORKGROUP"].ToString();
+                                        _iPrepareQty = dtWorkgroupSet.Rows[0]["PREPAREQTY"] is not null ? int.Parse(dtWorkgroupSet.Rows[0]["PREPAREQTY"].ToString()) : 0;
+                                        _Workgroup = dtWorkgroupSet.Rows[0]["WORKGROUP"] is null ? "" : dtWorkgroupSet.Rows[0]["WORKGROUP"].ToString();
+                                    }
+                                }
+                            }
+
+                            _logger.Debug(string.Format("[WorkgroupSet][{0}][{1}]{2}[{3}][{4}][{5}][{6}][{7}]", drRecord["EQUIPID"].ToString(), vStage, useFaileRack, faileRack, outeRack, ineRack, bCheckRecipe, _Workgroup_priority));
+                            
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Debug(string.Format("[Exception][{0}] {1}", "WorkgroupSet",ex.Message));
+                            continue;
+                        }
+
+                        /*
+                        try 
+                        {
+                            bCustDevice = dtWorkgroupSet.Rows[0]["checkCustDevice"] is not null ? dtWorkgroupSet.Rows[0]["checkCustDevice"].ToString().Equals("1") ? true : false : true;
+                            useFaileRack = dtWorkgroupSet.Rows[0]["USEFAILERACK"] is null ? false : dtWorkgroupSet.Rows[0]["USEFAILERACK"].ToString().Equals("1") ? true : false;
+                            faileRack = dtWorkgroupSet.Rows[0]["F_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["F_ERACK"].ToString();
+                            outeRack = dtWorkgroupSet.Rows[0]["OUT_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["OUT_ERACK"].ToString();
+                            ineRack = dtWorkgroupSet.Rows[0]["IN_ERACK"] is null ? "" : dtWorkgroupSet.Rows[0]["IN_ERACK"].ToString();
+                            _Workgroup_priority = dtWorkgroupSet.Rows[0]["prio"] is null ? 20 : int.Parse(dtWorkgroupSet.Rows[0]["prio"].ToString());
+                            bBindWorkgroup = dtWorkgroupSet.Rows[0]["BINDWORKGROUP"] is not null ? dtWorkgroupSet.Rows[0]["BINDWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                            bPrepareNextWorkgroup = dtWorkgroupSet.Rows[0]["PREPARENEXTWORKGROUP"] is not null ? dtWorkgroupSet.Rows[0]["PREPARENEXTWORKGROUP"].ToString().Equals("1") ? true : false : true;
+                            _NextWorkgroup = dtWorkgroupSet.Rows[0]["NEXTWORKGROUP"] is null ? "" : dtWorkgroupSet.Rows[0]["NEXTWORKGROUP"].ToString();
+                            _iPrepareQty = dtWorkgroupSet.Rows[0]["PREPAREQTY"] is not null ? int.Parse(dtWorkgroupSet.Rows[0]["PREPAREQTY"].ToString()) : 0;
+                            _Workgroup = dtWorkgroupSet.Rows[0]["WORKGROUP"] is null ? "" : dtWorkgroupSet.Rows[0]["WORKGROUP"].ToString();
+                        }
+                        catch(Exception ex) {
+                            _logger.Debug(string.Format("[Exception] {0}", ex.Message));
+                            continue;
+                        }
+                        */
+
+                        try {
+                            if (bBindWorkgroup)
+                            {
+                                if (ineRack.Trim().Equals(""))
+                                {
+                                    //back stage
+
+
+                                }
+                                if (outeRack.Trim().Equals(""))
+                                {
+                                    //front stage
+                                    outeRack = "";
+                                }
+                            }
+                        } 
+                        catch(Exception ex) { }
+                    }
+
                     if (_DebugMode)
                     {
-                        _logger.Debug(string.Format("[Port_Type] {0} / {1}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"]));
+                        _logger.Debug(string.Format("[Port_Type] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString()));
                     }
 
                     //Port_Type: in 找一個載具Carrier, Out 找目的地Dest 
@@ -2474,10 +3686,12 @@ namespace RTDWebAPI.Service
                             //1. wait to unload 且沒有其它符合的Carrier 直接產生Unload指令
                             //2. wait to unload 而且有其它適用的Carrier (full), 產生Swap指令(Load + Unload)
                             //2.1. Unload, 如果out port的 carrier type 相同, 產生transfer 指令至out port
+                            string _tmpDest = "";
+                            _commandState = "";
                             iPortState = GetPortStatus(dtPortsInfo, drRecord["port_id"].ToString(), out sPortState);
                             if (_DebugMode)
                             {
-                                _logger.Debug(string.Format("[Port_Type] {0} / {1}", drRecord["EQUIPID"].ToString(), iPortState));
+                                _logger.Debug(string.Format("[Port_Type] {0} / {1}", drRecord["EQUIPID"].ToString(), iPortState, drRecord["PORT_ID"].ToString()));
                             }
 
                             switch (iPortState)
@@ -2485,25 +3699,68 @@ namespace RTDWebAPI.Service
                                 case 1:
                                     //1. Transfer Blocked
                                     continue;
-                                    break;
+    
                                 case 2:
-                                    break;
                                 case 3:
                                 case 5:
                                     //2. Near Completion
                                     //3.Ready to Unload
                                     //5. Reject and Ready to unload
+                                    if (iPortState == 2)
+                                    {
+                                        if (bNearComplete)
+                                        {
+                                            _commandState = "NearComp";
+                                        }
+                                        else
+                                        {
+                                            //lstTransfer.CommandState = "NearComp";
+                                            _commandState = "";
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _commandState = "";
+                                    }
+
+                                    lstTransfer.CommandState = _commandState;
+
                                     try
                                     {
+                                        //rtsMachineState, rtsCurrentState, rtsDownState
+                                        //Unload 不管機台狀態20230710 Mark by Vance ...YY
+                                        //if(rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                        //{ 
+                                        //    //Do Nothing
+                                        //}
+                                        //else
+                                        //{
+                                        //    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                        //    continue;
+                                        //}
+                                        if(_expired)
+                                        {
+                                            if (isManualMode)
+                                                continue;
+                                        }
+                                        else
+                                        {
+                                            //Not expired. Manual more still do Unload
+                                        }
+
                                         bIsMatch = false;
-                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString()));
+                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString(), tableOrder));
                                         if (dtWorkInProcessSch.Rows.Count > 0)
                                             continue;
 
                                         //取得當前Load Port上的Carrier
                                         dtLoadPortCarrier = _dbTool.GetDataTable(_BaseDataService.SelectLoadPortCarrierByEquipId(drRecord["EQUIPID"].ToString()));
                                         if (dtLoadPortCarrier.Rows.Count > 0)
+                                        {
                                             drIn = dtLoadPortCarrier.Select("PORTNO = '" + drRecord["PORT_SEQ"].ToString() + "'");
+                                            UnloadCarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
+                                        }
 
                                         if (iPortState.Equals(5))
                                         {
@@ -2518,7 +3775,26 @@ namespace RTDWebAPI.Service
                                             }
                                         }
 
-                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true);
+                                        try
+                                        {
+                                            if (bBindWorkgroup)
+                                            {
+                                                if (ineRack.Trim().Equals(""))
+                                                {
+                                                    //back stage(AOI)
+                                                    //Not need to load carrier
+                                                    tmpRack = "";
+                                                }
+                                                if (outeRack.Trim().Equals(""))
+                                                {
+                                                    //front stage(WAFER CLEAN)
+
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex) { }
+
+                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
                                         //AvaileCarrier is true
 
                                         int iQty = 0; int iQuantity = 0; int iTotalQty = 0;
@@ -2538,15 +3814,56 @@ namespace RTDWebAPI.Service
                                                     _logger.Debug(string.Format("---locate is {0}", draCarrier["locate"].ToString()));
                                                     _logger.Debug(string.Format("---out erack is {0}", dtWorkgroupSet.Rows[0]["out_erack"].ToString()));
                                                 }
+                                                CarrierID = "";
 
                                                 if (_oEventQ.EventName.Equals("AbnormalyEquipmentStatus"))
                                                 {
-                                                    //由機台來找lot時, Equipment 需為主要機台(第一台)
-                                                    sql = string.Format(_BaseDataService.QueryEquipListFirst(draCarrier["lot_id"].ToString(), drRecord["EQUIPID"].ToString()));
-                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    //SelectTableEquipmentPortsInfoByEquipId    
+                                                    sql = string.Format(_BaseDataService.SelectTableLotInfoByLotid(draCarrier["lot_id"].ToString()));
+                                                    dtTemp2 = _dbTool.GetDataTable(sql);
 
-                                                    if (dtTemp.Rows.Count <= 0)
+                                                    //由機台來找lot時, Equipment 需為主要機台(第一台)
+                                                    string[] arrEqp = dtTemp2.Rows[0]["equiplist"].ToString().Split(',');
+                                                    bool isFirst = false;
+
+                                                    foreach (string tmpEqp in arrEqp)
+                                                    {
+                                                        sql = string.Format(_BaseDataService.SelectTableEquipmentPortsInfoByEquipId(tmpEqp));
+                                                        dtTemp = _dbTool.GetDataTable(sql);
+
+                                                        if (dtTemp.Rows.Count > 0)
+                                                        {
+                                                            if (dtTemp.Rows[0]["manualmode"].ToString().Equals("1"))
+                                                            {
+                                                                continue;
+                                                            }
+                                                            else
+                                                            {
+                                                                if (drRecord["EQUIPID"].ToString().Equals(tmpEqp))
+                                                                {
+                                                                    isFirst = true;
+                                                                    break;
+                                                                }
+                                                            }
+
+                                                            if (isFirst)
+                                                            {
+                                                                continue;
+                                                            }
+                                                            else
+                                                            {
+
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (!isFirst)
                                                         continue;
+                                                    //sql = string.Format(_BaseDataService.QueryEquipListFirst(draCarrier["lot_id"].ToString(), drRecord["EQUIPID"].ToString()));
+                                                    //dtTemp = _dbTool.GetDataTable(sql);
+
+                                                    //if (dtTemp.Rows.Count <= 0)
+                                                    //continue;
                                                 }
 
                                                 //站點不當前站點不同, 不取這批lot
@@ -2566,20 +3883,86 @@ namespace RTDWebAPI.Service
                                                     }
                                                 }
 
+                                                if (_portModel.Equals("1I1OT2"))
+                                                {
+                                                    //1I1OT2 特定機台邏輯
+                                                    //IN: Lotid 會對應一個放有Matal Ring 的Cassette, 需存在才進行派送
+                                                    MetalRingCarrier = "";
+
+                                                    sql = string.Format(_BaseDataService.CheckMetalRingCarrier(draCarrier["carrier_id"].ToString()));
+                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    if (dtTemp.Rows.Count > 0)
+                                                    {
+                                                        MetalRingCarrier = dtTemp.Rows[0]["carrier_id"].ToString();
+                                                        _logger.Debug(string.Format("---MetalRingCarrier is {0}", MetalRingCarrier));
+                                                        //break;
+                                                        CarrierID = draCarrier["carrier_id"].ToString();
+                                                    }
+                                                    else
+                                                    {
+                                                        if (_DebugMode)
+                                                            _logger.Debug(string.Format("---Can Not Find Have MetalRing Cassette."));
+                                                        //Can Not Find Have MetalRing Cassette.
+                                                        continue;
+                                                    }
+                                                }
+
                                                 //Check Equipment CustDevice / Lot CustDevice is same.
-                                                if (!EquipCustDevice.Equals(""))
+                                                if (!EquipCustDevice.Trim().Equals(""))
                                                 {
                                                     string device = "";
-                                                    sql = _BaseDataService.QueryLotInfoByCarrierID(draCarrier["lot_id"].ToString());
+                                                    string rtdLotDevice = "";
+                                                    sql = _BaseDataService.QueryLotInfoByCarrierID(draCarrier["carrier_id"].ToString());
                                                     dtTemp = _dbTool.GetDataTable(sql);
-                                                    if(dtTemp.Rows.Count > 0)
+                                                    if (dtTemp.Rows.Count > 0)
                                                     {
-                                                        device = dtTemp.Rows[0]["custdevice"].ToString();
-                                                        if (!device.Equals(EquipCustDevice))
+                                                        rtdLotDevice = dtTemp.Rows[0]["custdevice"] is null ? "" : dtTemp.Rows[0]["custdevice"].ToString();
+
+                                                        //DataTable dtTemp2;
+                                                        sql = _BaseDataService.QueryDataByLotid(dtTemp.Rows[0]["lot_id"].ToString(), GetExtenalTables(configuration, "SyncExtenalData", "AdsInfo"));
+                                                        dtTemp2 = _dbTool.GetDataTable(sql);
+                                                        //select lot_age, custDevice from semi_int.rtd_cis_ads_vw @SEMI_INT where lotid = '83727834.1';
+                                                        if (dtTemp2.Rows.Count > 0)
                                                         {
+
+                                                            device = dtTemp2.Rows[0]["custdevice"].ToString();
+                                                            if (!device.Trim().Equals(""))
+                                                            {
+                                                                if (!device.Equals(rtdLotDevice))
+                                                                {
+                                                                    sql = _BaseDataService.UpdateCustDeviceByLotID(dtTemp.Rows[0]["lot_id"].ToString(), device);
+                                                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                                                }
+
+                                                                if (bCustDevice)
+                                                                {
+                                                                    if (!device.Equals(EquipCustDevice))
+                                                                    {
+                                                                        _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+
+                                                                        MetalRingCarrier = "";
+                                                                        continue;
+                                                                    }
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                MetalRingCarrier = "";
+
+                                                                ///the lot custDevice is empty, the carrier can not dispatching to tools.
+                                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}, lot custDevice is null.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                continue;
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            ///can not get lot from ads system.
+                                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] Can not get lot from ads.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
                                                             continue;
                                                         }
                                                     }
+                                                    else
+                                                        continue;
                                                 }
                                                 
 
@@ -2589,12 +3972,27 @@ namespace RTDWebAPI.Service
                                                 bNoFind = true;
                                                 sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["in_erack"].ToString());
                                                 dtTemp = _dbTool.GetDataTable(sql);
+                                                bool blocatecheck = false;
                                                 foreach (DataRow drRack in dtTemp.Rows)
                                                 {
-                                                    if (draCarrier["locate"].ToString().Equals(drRack["erackID"]))
+                                                    if (drRack["MAC"].ToString().Equals("STOCK"))
+                                                        blocatecheck = true;
+
+                                                    if (blocatecheck)
                                                     {
-                                                        bNoFind = false;
-                                                        break;
+                                                        if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                        {
+                                                            bNoFind = false;
+                                                            break;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                        {
+                                                            bNoFind = false;
+                                                            break;
+                                                        }
                                                     }
                                                 }
 
@@ -2682,7 +4080,6 @@ namespace RTDWebAPI.Service
                                                     }
                                                 }
 
-                                                CarrierID = "";
                                                 if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
                                                 {
                                                     CarrierID = draCarrier["Carrier_ID"].ToString();
@@ -2708,37 +4105,90 @@ namespace RTDWebAPI.Service
                                             }
                                         }
 
-                                        if (dtAvaileCarrier.Rows.Count <= 0 || !bIsMatch || bNoFind)
+                                        if (dtAvaileCarrier.Rows.Count <= 0 || !bIsMatch || bNoFind || isManualMode)
                                         {
+                                            if(useFaileRack)
+                                            {
+                                                _tmpDest = faileRack;
+                                            }
+                                            else
+                                            {
+                                                _tmpDest = drRecord["IN_ERACK"].ToString();
+                                            }
+
                                             CarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
 
                                             lstTransfer.CommandType = "UNLOAD";
                                             lstTransfer.Source = drRecord["PORT_ID"].ToString();
-                                            lstTransfer.Dest = drRecord["IN_ERACK"].ToString();
-                                            lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
+                                            //lstTransfer.Dest = drRecord["IN_ERACK"].ToString();
+                                            if (_portModel.Equals("1I1OT2"))
+                                                lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
+                                            else
+                                                lstTransfer.Dest = _tmpDest;
+
+                                            lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                             lstTransfer.Quantity = 0;
-                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
                                             break;
                                         }
                                         //AvaileCarrier is true
                                         if (bIsMatch)
                                         {
                                             drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
+                                            if (_DebugMode)
+                                                _logger.Debug(string.Format("[drCarrierData][{0}] {1} / {2}", drRecord["PORT_ID"].ToString(), drCarrierData[0]["COMMAND_TYPE"].ToString(), CarrierID));
+
                                         }
 
-                                        lstTransfer.CommandType = "LOAD";
-                                        lstTransfer.Source = "*";
-                                        lstTransfer.Dest = drRecord["PORT_ID"].ToString();
-                                        lstTransfer.CarrierID = CarrierID;
-                                        lstTransfer.Quantity = int.Parse(drCarrierData.Length > 0 ? drCarrierData[0]["QUANTITY"].ToString() : "0");
-                                        lstTransfer.CarrierType = drCarrierData.Length > 0 ? drCarrierData[0]["COMMAND_TYPE"].ToString() : "";
-                                        lstTransfer.Total = iTotalQty;
-                                        lstTransfer.IsLastLot = isLastLot ? 1 : 0;
-                                        //normalTransfer.Transfer.Add(lstTransfer);
-                                        //iReplace++;
+                                        if(rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                        {
+                                            if (!isManualMode)
+                                            {
+                                                //如果Reject時, 設備不處於Manual Mode才產生Load 指令
+
+                                                lstTransfer.CommandType = "LOAD";
+                                                lstTransfer.Source = "*";
+                                                lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                                lstTransfer.CarrierID = CarrierID;
+                                                lstTransfer.Quantity = int.Parse(drCarrierData.Length > 0 ? drCarrierData[0]["QUANTITY"].ToString() : "0");
+                                                lstTransfer.CarrierType = drCarrierData.Length > 0 ? drCarrierData[0]["COMMAND_TYPE"].ToString() : "";
+                                                lstTransfer.Total = iTotalQty;
+                                                lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                                lstTransfer.CommandState = _commandState;
+                                                //normalTransfer.Transfer.Add(lstTransfer);
+                                                //iReplace++;
+                                            }
+                                        }
+                                        else
+                                        {
+                                            sql = string.Format(_BaseDataService.UpdateTableEQP_STATUS(drRecord["EQUIPID"].ToString(), _BaseDataService.GetEquipState(rtsCurrentState), rtsMachineState, rtsDownState));
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                            continue;
+                                        }
 
                                         CarrierID = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["CARRIER_ID"].ToString() : "";
 
+                                        if (_portModel.Equals("1I1OT2"))
+                                        {
+                                            CarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
+
+                                            normalTransfer.Transfer.Add(lstTransfer);
+                                            iReplace++;
+
+                                            lstTransfer = new TransferList();
+
+                                            lstTransfer.CommandType = "UNLOAD";
+                                            lstTransfer.Source = drRecord["PORT_ID"].ToString();
+                                            lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
+                                            lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
+                                            lstTransfer.Quantity = 0;
+                                            //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                            lstTransfer.CommandState = _commandState;
+                                            break;
+                                        }
                                         //檢查Out port 與 In port 的carrier type是否相同
                                         drOut = dtPortsInfo.Select("Port_Type='OUT'");
                                         if (drOut[0]["CARRIER_TYPE"].ToString().Equals(drRecord["CARRIER_TYPE"].ToString()))
@@ -2763,11 +4213,13 @@ namespace RTDWebAPI.Service
                                                     lstTransfer.Dest = drOut[0]["PORT_ID"].ToString();
                                                     lstTransfer.CarrierID = CarrierID;
                                                     lstTransfer.Quantity = int.Parse(dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["QUANTITY"].ToString() : "0");
-                                                    lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? drRecord["CARRIER_TYPE"].ToString() : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    lstTransfer.CommandState = _commandState;
                                                     //normalTransfer.Transfer.Add(lstTransfer);
                                                     break;
                                                 default:
-                                                    CarrierID = drIn[0]["CARRIER_ID"].ToString();
+                                                    CarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
 
                                                     normalTransfer.Transfer.Add(lstTransfer);
                                                     iReplace++;
@@ -2777,9 +4229,11 @@ namespace RTDWebAPI.Service
                                                     lstTransfer.CommandType = "UNLOAD";
                                                     lstTransfer.Source = drRecord["PORT_ID"].ToString();
                                                     lstTransfer.Dest = drRecord["IN_ERACK"].ToString();
-                                                    lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
+                                                    lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                                     lstTransfer.Quantity = 0;
-                                                    lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                                    lstTransfer.CommandState = _commandState;
                                                     break;
                                             }
 
@@ -2787,7 +4241,16 @@ namespace RTDWebAPI.Service
                                         else
                                         {
                                             //Input vs Output Carrier Type is diffrence. do unload
-                                            CarrierID = drIn[0]["CARRIER_ID"].ToString();
+                                            if (useFaileRack)
+                                            {
+                                                _tmpDest = faileRack;
+                                            }
+                                            else
+                                            {
+                                                _tmpDest = drRecord["IN_ERACK"].ToString();
+                                            }
+
+                                            CarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
 
                                             normalTransfer.Transfer.Add(lstTransfer);
                                             iReplace++;
@@ -2796,10 +4259,12 @@ namespace RTDWebAPI.Service
 
                                             lstTransfer.CommandType = "UNLOAD";
                                             lstTransfer.Source = drRecord["PORT_ID"].ToString();
-                                            lstTransfer.Dest = drRecord["IN_ERACK"].ToString();
-                                            lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
+                                            lstTransfer.Dest = _tmpDest;
+                                            lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                             lstTransfer.Quantity = 0;
-                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                            lstTransfer.CommandState = _commandState;
                                             break;
                                         }
                                     }
@@ -2811,6 +4276,19 @@ namespace RTDWebAPI.Service
                                     //4. Empty (Ready to load)
                                     try
                                     {
+                                        //rtsMachineState, rtsCurrentState, rtsDownState
+                                        if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                        {
+                                            //Do Nothing
+                                            if (isManualMode)
+                                                continue;
+                                        }
+                                        else
+                                        {
+                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                            continue;
+                                        }
+
                                         if (bStageIssue)
                                         {
                                             sql = _BaseDataService.LockLotInfoWhenReady(lotID);
@@ -2823,12 +4301,31 @@ namespace RTDWebAPI.Service
                                             continue;
                                         }
 
-                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString()));
+                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString(), tableOrder));
                                         if (dtWorkInProcessSch.Rows.Count > 0)
                                             continue;
 
+                                        try
+                                        {
+                                            if (bBindWorkgroup)
+                                            {
+                                                if (ineRack.Trim().Equals(""))
+                                                {
+                                                    //back stage(AOI)
+                                                    //Not need to load carrier
+                                                    tmpRack = "";
+                                                }
+                                                if (outeRack.Trim().Equals(""))
+                                                {
+                                                    //front stage(WAFER CLEAN)
+
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex) { }
+
                                         bIsMatch = false;
-                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true);
+                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
                                         if (dtAvaileCarrier is null)
                                             continue;
                                         if (dtAvaileCarrier.Rows.Count <= 0)
@@ -2842,6 +4339,7 @@ namespace RTDWebAPI.Service
                                         {
                                             bIsMatch = false;
                                             string tmpMessage = "";
+                                            MetalRingCarrier = "";
 
                                             foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
                                             {
@@ -2850,22 +4348,129 @@ namespace RTDWebAPI.Service
                                                     _logger.Debug(string.Format("---locate is {0}", draCarrier["locate"].ToString()));
                                                     _logger.Debug(string.Format("---in erack is {0}", dtWorkgroupSet.Rows[0]["in_erack"].ToString()));
                                                 }
+                                                CarrierID = "";
 
                                                 if (_oEventQ.EventName.Equals("AbnormalyEquipmentStatus"))
                                                 {
-                                                    //由機台來找lot時, Equipment 需為主要機台(第一台)
-                                                    sql = string.Format(_BaseDataService.QueryEquipListFirst(draCarrier["lot_id"].ToString(), drRecord["EQUIPID"].ToString()));
-                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    //SelectTableEquipmentPortsInfoByEquipId    
+                                                    sql = string.Format(_BaseDataService.SelectTableLotInfoByLotid(draCarrier["lot_id"].ToString()));
+                                                    dtTemp2 = _dbTool.GetDataTable(sql);
 
-                                                    if (dtTemp.Rows.Count <= 0)
+                                                    //由機台來找lot時, Equipment 需為主要機台(第一台)
+                                                    string[] arrEqp = dtTemp2.Rows[0]["equiplist"].ToString().Split(',');
+                                                    bool isFirst = false;
+
+                                                    foreach (string tmpEqp in arrEqp)
+                                                    {
+                                                        sql = string.Format(_BaseDataService.SelectTableEquipmentPortsInfoByEquipId(tmpEqp));
+                                                        dtTemp = _dbTool.GetDataTable(sql);
+
+                                                        if (dtTemp.Rows.Count > 0)
+                                                        {
+                                                            if (dtTemp.Rows[0]["manualmode"].ToString().Equals("1"))
+                                                            {
+                                                                continue;
+                                                            }
+                                                            else
+                                                            {
+                                                                if (drRecord["EQUIPID"].ToString().Equals(tmpEqp))
+                                                                {
+                                                                    isFirst = true;
+                                                                    break;
+                                                                }
+                                                            }
+
+                                                            if (isFirst)
+                                                            {
+                                                                continue;
+                                                            }
+                                                            else
+                                                            { 
+                                                                
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if(!isFirst)
                                                         continue;
+                                                    //sql = string.Format(_BaseDataService.QueryEquipListFirst(draCarrier["lot_id"].ToString(), drRecord["EQUIPID"].ToString()));
+                                                    //dtTemp = _dbTool.GetDataTable(sql);
+
+                                                    //if (dtTemp.Rows.Count <= 0)
+                                                        //continue;
                                                 }
 
                                                 if (_portModel.Equals("1I1OT2"))
                                                 {
+                                                    _logger.Debug(string.Format("---_portModel is {0} / {1}", _portModel, draCarrier["carrier_id"].ToString()));
                                                     //1I1OT2 特定機台邏輯
                                                     //IN: Lotid 會對應一個放有Matal Ring 的Cassette, 需存在才進行派送
-                                                    MatalRingCarrier = "";
+                                                    if (MetalRingCarrier.Equals(""))
+                                                    {
+                                                        sql = string.Format(_BaseDataService.CheckMetalRingCarrier(draCarrier["carrier_id"].ToString()));
+                                                        dtTemp = _dbTool.GetDataTable(sql);
+                                                        if (dtTemp.Rows.Count > 0)
+                                                        {
+                                                            MetalRingCarrier = dtTemp.Rows[0]["carrier_id"].ToString();
+                                                            _logger.Debug(string.Format("---MetalRingCarrier is {0}", MetalRingCarrier));
+                                                            //break;
+                                                            CarrierID = draCarrier["carrier_id"].ToString();
+                                                        }
+                                                        else
+                                                        {
+                                                            if (_DebugMode)
+                                                                _logger.Debug(string.Format("---Can Not Find Have MetalRing Cassette."));
+                                                            //Can Not Find Have MetalRing Cassette.
+                                                            continue;
+                                                        }
+                                                    }
+                                                    else
+                                                        continue;
+                                                }
+
+                                                if (!EquipCustDevice.Trim().Equals(""))
+                                                {
+                                                    string device = "";
+                                                    sql = _BaseDataService.QueryLotInfoByCarrierID(draCarrier["carrier_id"].ToString());
+                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    if (dtTemp.Rows.Count > 0)
+                                                    {
+                                                        //DataTable dtTemp2;
+                                                        sql = _BaseDataService.QueryDataByLotid(dtTemp.Rows[0]["lot_id"].ToString(), GetExtenalTables(configuration, "SyncExtenalData", "AdsInfo"));
+                                                        dtTemp2 = _dbTool.GetDataTable(sql);
+                                                        //select lot_age, custDevice from semi_int.rtd_cis_ads_vw @SEMI_INT where lotid = '83727834.1';
+                                                        if (dtTemp2.Rows.Count > 0)
+                                                        {
+                                                            device = dtTemp2.Rows[0]["custdevice"].ToString();
+                                                            if (!device.Trim().Equals(""))
+                                                            {
+                                                                //_logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] device[{1}] EquipCustDevice[{2}]", _oEventQ.EventName, device, EquipCustDevice));
+
+                                                                if (!device.Equals(EquipCustDevice))
+                                                                {
+                                                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+
+                                                                    MetalRingCarrier = "";
+                                                                    continue;
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                MetalRingCarrier = "";
+                                                                ///the lot custDevice is empty, the carrier can not dispatching to tools.
+                                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}, lot custDevice is null.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                continue;
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            ///can not get lot from ads system.
+                                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] Can not get lot from ads.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                            continue;
+                                                        }
+                                                    }
+                                                    else
+                                                        continue;
                                                 }
 
                                                 iQty = 0; iTotalQty = 0; iQuantity = 0; iCountOfCarr = 0;
@@ -2874,17 +4479,35 @@ namespace RTDWebAPI.Service
                                                 bool bNoFind = true;
                                                 sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["in_erack"].ToString());
                                                 dtTemp = _dbTool.GetDataTable(sql);
+                                                bool blocatecheck = false;
                                                 foreach (DataRow drRack in dtTemp.Rows)
                                                 {
-                                                    if (draCarrier["locate"].ToString().Equals(drRack["erackID"]))
+                                                    if(drRack["MAC"].ToString().Equals("STOCK"))
+                                                        blocatecheck = true;
+
+                                                    if (blocatecheck)
                                                     {
-                                                        bNoFind = false;
-                                                        break;
+                                                        if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                        {
+                                                            bNoFind = false;
+                                                            break;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                        {
+                                                            bNoFind = false;
+                                                            break;
+                                                        }
                                                     }
                                                 }
 
                                                 if (bNoFind)
                                                 {
+                                                    if (_DebugMode)
+                                                        _logger.Debug(string.Format("---Can Not Find eRack By GroupID."));
+
                                                     continue;
                                                 }
 
@@ -2974,21 +4597,32 @@ namespace RTDWebAPI.Service
                                                     }
                                                 }
 
-                                                CarrierID = "";
-                                                if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
+                                                if (CarrierID.Equals(""))
                                                 {
-                                                    CarrierID = draCarrier["Carrier_ID"].ToString();
-                                                    bIsMatch = true;
+                                                    if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
+                                                    {
+                                                        CarrierID = draCarrier["Carrier_ID"].ToString();
+                                                        bIsMatch = true;
+                                                    }
+                                                    else
+                                                    {
+                                                        MetalRingCarrier = "";
+                                                        bIsMatch = false;
+                                                        if (_DebugMode)
+                                                            _logger.Debug(string.Format("[IsMatch][{0}] {1} / {2} / {3}", drRecord["PORT_ID"].ToString(), bIsMatch, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()));
+                                                        continue;
+                                                    }
                                                 }
                                                 else
-                                                {
-                                                    bIsMatch = false;
-                                                    continue;
-                                                }
+                                                    bIsMatch = true;
 
                                                 if (bIsMatch)
                                                 {
                                                     _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
+                                                    drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
+                                                    if (_DebugMode)
+                                                        _logger.Debug(string.Format("[drCarrierData][{0}] {1} / {2} / {3}", drRecord["PORT_ID"].ToString(), bIsMatch, drCarrierData[0]["COMMAND_TYPE"].ToString(), CarrierID));
+
                                                     break;
                                                 }
                                             }
@@ -2998,20 +4632,28 @@ namespace RTDWebAPI.Service
 
                                             if (!tmpMessage.Equals(""))
                                             {
+                                                _logger.Debug(string.Format("[tmpMessage] {0} / {1}", drRecord["EQUIPID"].ToString(), tmpMessage));
                                                 _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
                                                 continue;
                                             }
                                             drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
+                                            if (_DebugMode)
+                                                _logger.Debug(string.Format("[drCarrierData][{0}] {1} / {2}", drRecord["PORT_ID"].ToString(), drCarrierData[0]["COMMAND_TYPE"].ToString(), CarrierID));
+
                                         }
 
-                                        lstTransfer.CommandType = "LOAD";
-                                        lstTransfer.Source = "*";
-                                        lstTransfer.Dest = drRecord["PORT_ID"].ToString();
-                                        lstTransfer.CarrierID = CarrierID;
-                                        lstTransfer.Quantity = int.Parse(drCarrierData.Length > 0 ? drCarrierData[0]["QUANTITY"].ToString() : "0");
-                                        lstTransfer.CarrierType = drCarrierData.Length > 0 ? drCarrierData[0]["COMMAND_TYPE"].ToString() : "";
-                                        lstTransfer.Total = iTotalQty;
-                                        lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                        if (!isManualMode)
+                                        {
+                                            lstTransfer.CommandType = "LOAD";
+                                            lstTransfer.Source = "*";
+                                            lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                            lstTransfer.CarrierID = CarrierID;
+                                            lstTransfer.Quantity = int.Parse(drCarrierData.Length > 0 ? drCarrierData[0]["QUANTITY"].ToString() : "0");
+                                            lstTransfer.CarrierType = drCarrierData.Length > 0 ? drCarrierData[0]["COMMAND_TYPE"].ToString() : "";
+                                            lstTransfer.Total = iTotalQty;
+                                            lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                            lstTransfer.CommandState = _commandState;
+                                        }
                                     }
                                     catch (Exception ex)
                                     { }
@@ -3057,119 +4699,214 @@ namespace RTDWebAPI.Service
                                     //1. Transfer Blocked
                                     continue;
                                 case 2:
-                                    break;
                                 case 3:
                                 case 5:
                                     //2. Near Completion
                                     //3.Ready to Unload
                                     //5. Reject and Ready to unload
+                                    if (iPortState == 2)
+                                    {
+                                        if (bNearComplete)
+                                        {
+                                            _commandState = "NearComp";
+                                        }
+                                        else
+                                        {
+                                            //lstTransfer.CommandState = "NearComp";
+                                            _commandState = "";
+                                            break;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        _commandState = "";
+                                    }
+                                    lstTransfer.CommandState = _commandState;
+
                                     try
                                     {
-                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString()));
+                                        //rtsMachineState, rtsCurrentState, rtsDownState
+                                        //unload not need check rts state, Mark by Vance 20230710 YY req
+                                        //if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                        //{
+                                        //    //Do Nothing
+                                        //}
+                                        //else
+                                        //{
+                                        //    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                        //    continue;
+                                        //}
+                                        //仍然要下料
+                                        //if (isManualMode)
+                                            //continue;
+
+                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString(), tableOrder));
                                         if (dtWorkInProcessSch.Rows.Count > 0)
                                             continue;
 
-                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), false);
-                                        //AvaileCarrier is true
-                                        if (dtAvaileCarrier.Rows.Count > 0)
+                                        try
                                         {
-                                            bIsMatch = false;
-                                            string tmpMessage = "";
-                                            foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
+                                            if (bBindWorkgroup)
                                             {
-                                                if (_DebugMode)
+                                                if (ineRack.Trim().Equals(""))
                                                 {
-                                                    _logger.Debug(string.Format("---locate is {0}", draCarrier["locate"].ToString()));
-                                                    _logger.Debug(string.Format("---out erack is {0}", dtWorkgroupSet.Rows[0]["out_erack"].ToString()));
+                                                    //back stage(AOI)
+                                                    //Not need to load carrier
+                                                    tmpRack = "";
                                                 }
-
-                                                //Check Workgroup Set 
-                                                bool bNoFind = true;
-                                                sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["out_erack"].ToString());
-                                                dtTemp = _dbTool.GetDataTable(sql);
-                                                foreach (DataRow drRack in dtTemp.Rows)
+                                                if (outeRack.Trim().Equals(""))
                                                 {
-                                                    if (draCarrier["locate"].ToString().Equals(drRack["erackID"]))
+                                                    //front stage(WAFER CLEAN)
+
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex) { }
+
+                                        //1I1OT2 己經取得可用的MetalRing Carrier x.R
+                                        if (MetalRingCarrier.Equals(""))
+                                        {
+                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), false, _keyRTDEnv);
+                                            //AvaileCarrier is true
+                                            if (dtAvaileCarrier.Rows.Count > 0)
+                                            {
+                                                bIsMatch = false;
+                                                string tmpMessage = "";
+                                                foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
+                                                {
+                                                    if (_DebugMode)
                                                     {
-                                                        bNoFind = false;
-                                                        break;
+                                                        _logger.Debug(string.Format("---locate is {0}", draCarrier["locate"].ToString()));
+                                                        _logger.Debug(string.Format("---out erack is {0}", dtWorkgroupSet.Rows[0]["out_erack"].ToString()));
                                                     }
-                                                }
 
-                                                if (bNoFind)
-                                                {
-                                                    continue;
-                                                }
-                                                //if (!draCarrier["locate"].ToString().Equals(dtWorkgroupSet.Rows[0]["out_erack"]))
-                                                //    continue;
+                                                    //Check Workgroup Set 
+                                                    bool bNoFind = true;
+                                                    sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["out_erack"].ToString());
+                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    bool blocatecheck = false;
+                                                    foreach (DataRow drRack in dtTemp.Rows)
+                                                    {
+                                                        if (drRack["MAC"].ToString().Equals("STOCK"))
+                                                            blocatecheck = true;
 
-                                                CarrierID = "";
+                                                        if (blocatecheck)
+                                                        {
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
 
-                                                if (_DebugMode)
-                                                {
-                                                    _logger.Debug(string.Format("---1.1-PortModel is {0}", _portModel));
-                                                }
+                                                    if (bNoFind)
+                                                    {
+                                                        continue;
+                                                    }
+                                                    //if (!draCarrier["locate"].ToString().Equals(dtWorkgroupSet.Rows[0]["out_erack"]))
+                                                    //    continue;
 
-                                                if (_portModel.Equals("2I2OT1"))
-                                                {
-                                                    CarrierID = draCarrier["Carrier_ID"].ToString();
-                                                    bIsMatch = true;
-                                                }
-                                                else
-                                                {
-                                                    if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
+                                                    CarrierID = "";
+
+                                                    if (_DebugMode)
+                                                    {
+                                                        _logger.Debug(string.Format("---1.1-PortModel is {0}", _portModel));
+                                                    }
+
+                                                    if (_portModel.Equals("2I2OT1"))
                                                     {
                                                         CarrierID = draCarrier["Carrier_ID"].ToString();
                                                         bIsMatch = true;
                                                     }
                                                     else
                                                     {
-                                                        bIsMatch = false;
-                                                        continue;
+                                                        if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
+                                                        {
+                                                            CarrierID = draCarrier["Carrier_ID"].ToString();
+                                                            bIsMatch = true;
+                                                        }
+                                                        else
+                                                        {
+                                                            bIsMatch = false;
+                                                            continue;
+                                                        }
                                                     }
-                                                }
 
-                                                if (bIsMatch)
-                                                {
-                                                    _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
+                                                    if (bIsMatch)
+                                                    {
+                                                        _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
+                                                        break;
+                                                    }
                                                     break;
                                                 }
+
+                                                if (!tmpMessage.Equals(""))
+                                                {
+                                                    _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
+                                                    continue;
+                                                }
+                                            }
+                                            
+                                            if (_DebugMode)
+                                            {
+                                                _logger.Debug(string.Format("---dtAvaileCarrier.Rows.Count is {0}", dtAvaileCarrier.Rows.Count));
+                                                _logger.Debug(string.Format("---bIsMatch is {0}", bIsMatch));
+                                            }
+
+                                            if (dtAvaileCarrier.Rows.Count <= 0 || !bIsMatch || isManualMode)
+                                            {
+                                                CarrierID = drOut.Length > 0 ? drOut[0]["CARRIER_ID"].ToString() : "";
+
+                                                if (_portModel.Equals("2I2OT1"))
+                                                {
+                                                    //"Position": "202310121423001"
+                                                    //BG Loadport 3 ready to unload, when not availe carrier can use will not do unload commands
+                                                    return result;   //return result; will stop logic for build commmands.
+                                                    //if (CarrierID.Equals(""))
+                                                    //    continue;  //continue just pass. but still do unload.
+                                                }
+
+                                                string tmpMessage = "";
+                                                _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
+
+                                                if (!tmpMessage.Equals(""))
+                                                {
+                                                    _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
+                                                    continue;
+                                                }
+
+                                                lstTransfer.CommandType = "UNLOAD";
+                                                lstTransfer.Source = drRecord["PORT_ID"].ToString();
+                                                lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
+                                                lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
+                                                lstTransfer.Quantity = 0;
+                                                //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                                lstTransfer.CommandState = _commandState;
                                                 break;
                                             }
 
-                                            if (!tmpMessage.Equals(""))
-                                            {
-                                                _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
-                                                continue;
-                                            }
                                         }
-
-                                        if (_DebugMode)
+                                        else
                                         {
-                                            _logger.Debug(string.Format("---dtAvaileCarrier.Rows.Count is {0}", dtAvaileCarrier.Rows.Count));
-                                            _logger.Debug(string.Format("---bIsMatch is {0}", bIsMatch));
-                                        }
+                                            CarrierID = MetalRingCarrier;
 
-                                        if (dtAvaileCarrier.Rows.Count <= 0 || !bIsMatch)
-                                        {
-                                            CarrierID = drOut.Length > 0 ? drOut[0]["CARRIER_ID"].ToString() : "";
+                                            sql = string.Format(_BaseDataService.SelectTableCarrierTransferByCarrier(MetalRingCarrier));
+                                            dtTemp = _dbTool.GetDataTable(sql);
 
-                                            string tmpMessage = "";
-                                            _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
-
-                                            if (!tmpMessage.Equals(""))
+                                            if (dtTemp.Rows.Count > 0)
                                             {
-                                                _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
-                                                continue;
+                                                dtAvaileCarrier = dtTemp;
                                             }
-
-                                            lstTransfer.CommandType = "UNLOAD";
-                                            lstTransfer.Source = drRecord["PORT_ID"].ToString();
-                                            lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
-                                            lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
-                                            lstTransfer.Quantity = 0;
-                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
-                                            break;
                                         }
 
                                         if (_DebugMode)
@@ -3192,6 +4929,7 @@ namespace RTDWebAPI.Service
                                             lstTransfer.CarrierID = CarrierID;
                                             lstTransfer.Quantity = dtLoadPortCarrier.Rows.Count > 0 ? int.Parse(dtLoadPortCarrier.Rows[0]["QUANTITY"].ToString()) : 0;
                                             lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                            lstTransfer.CommandState = _commandState;
 
                                             normalTransfer.Transfer.Add(lstTransfer);
                                             iReplace++;
@@ -3201,21 +4939,61 @@ namespace RTDWebAPI.Service
                                                 _logger.Debug(string.Format("----Logic true "));
                                             }
                                         }
+                                        else if (_portModel.Equals("1I1OT2"))
+                                        {
+                                            if (_DebugMode)
+                                            {
+                                                _logger.Debug(string.Format("----MetalRing Carrier is {0}", MetalRingCarrier));
+                                            }
+
+                                            if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                            {
+                                                lstTransfer.CommandType = "LOAD";
+                                                lstTransfer.Source = "*";
+                                                lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                                lstTransfer.CarrierID = CarrierID;
+                                                lstTransfer.Quantity = dtAvaileCarrier.Rows.Count > 0 ? int.Parse(dtAvaileCarrier.Rows[0]["QUANTITY"].ToString()) : 0;
+                                                lstTransfer.CarrierType = dtAvaileCarrier.Rows.Count > 0 ? dtAvaileCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                lstTransfer.CommandState = _commandState;
+
+                                                normalTransfer.Transfer.Add(lstTransfer);
+                                                iReplace++;
+
+                                                if (_DebugMode)
+                                                {
+                                                    _logger.Debug(string.Format("----Logic true "));
+                                                }
+                                            }
+                                            else
+                                            {
+                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                                continue;
+                                            }
+                                        }
                                         else
                                         {
                                             if (!bPortTypeSame)
                                             {
                                                 CarrierID = CarrierID.Equals("") ? dtAvaileCarrier.Rows[0]["Carrier_ID"].ToString() : CarrierID;
 
-                                                lstTransfer.CommandType = "LOAD";
-                                                lstTransfer.Source = "*";
-                                                lstTransfer.Dest = drRecord["PORT_ID"].ToString();
-                                                lstTransfer.CarrierID = CarrierID;
-                                                lstTransfer.Quantity = dtLoadPortCarrier.Rows.Count > 0 ? int.Parse(dtLoadPortCarrier.Rows[0]["QUANTITY"].ToString()) : 0;
-                                                lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                                {
+                                                    lstTransfer.CommandType = "LOAD";
+                                                    lstTransfer.Source = "*";
+                                                    lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                                    lstTransfer.CarrierID = CarrierID;
+                                                    lstTransfer.Quantity = dtLoadPortCarrier.Rows.Count > 0 ? int.Parse(dtLoadPortCarrier.Rows[0]["QUANTITY"].ToString()) : 0;
+                                                    lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                    lstTransfer.CommandState = _commandState;
 
-                                                normalTransfer.Transfer.Add(lstTransfer);
-                                                iReplace++;
+                                                    normalTransfer.Transfer.Add(lstTransfer);
+                                                    iReplace++;
+                                                }
+                                                else
+                                                {
+                                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                                    continue;
+                                                }
                                             }
                                         }
 
@@ -3236,9 +5014,11 @@ namespace RTDWebAPI.Service
                                         lstTransfer.CommandType = "UNLOAD";
                                         lstTransfer.Source = drRecord["PORT_ID"].ToString();
                                         lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
-                                        lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
+                                        lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                         lstTransfer.Quantity = 0;
-                                        lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                        //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                        lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                        lstTransfer.CommandState = _commandState;
                                         //lstTransfer.CommandType = "UNLOAD";
                                         //lstTransfer.Source = drRecord["PORT_ID"].ToString();
                                         //lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
@@ -3258,7 +5038,20 @@ namespace RTDWebAPI.Service
                                     //4. Empty (Ready to load)
                                     try
                                     {
-                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString()));
+                                        //rtsMachineState, rtsCurrentState, rtsDownState
+                                        if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                        {
+                                            //Do Nothing
+                                            if (isManualMode)
+                                                continue;
+                                        }
+                                        else
+                                        {
+                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                            continue;
+                                        }
+
+                                        dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString(), tableOrder));
                                         if (dtWorkInProcessSch.Rows.Count > 0)
                                             continue;
 
@@ -3266,68 +5059,120 @@ namespace RTDWebAPI.Service
                                         //if (drPortState.Length <= 0)
                                         //    continue;
 
-                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), false);
-                                        if (dtAvaileCarrier is null)
-                                            continue;
-                                        if (dtAvaileCarrier.Rows.Count <= 0)
-                                            continue;
-
-                                        if (dtAvaileCarrier.Rows.Count > 0)
+                                        try
                                         {
-                                            bIsMatch = false;
-                                            string tmpMessage = "";
-                                            foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
+                                            if (bBindWorkgroup)
                                             {
-
-                                                //Check Workgroup Set 
-                                                bool bNoFind = true;
-                                                sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["out_erack"].ToString());
-                                                dtTemp = _dbTool.GetDataTable(sql);
-                                                foreach (DataRow drRack in dtTemp.Rows)
+                                                if (ineRack.Trim().Equals(""))
                                                 {
-                                                    if (draCarrier["locate"].ToString().Equals(drRack["erackID"]))
+                                                    //back stage(AOI)
+                                                    //Not need to load carrier
+                                                    tmpRack = "";
+                                                }
+                                                if (outeRack.Trim().Equals(""))
+                                                {
+                                                    //front stage(WAFER CLEAN)
+
+                                                }
+                                            }
+                                        }
+                                        catch (Exception ex) { }
+
+                                        if (MetalRingCarrier.Equals(""))
+                                        {
+                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), false, _keyRTDEnv);
+                                            if (dtAvaileCarrier is null)
+                                                continue;
+                                            if (dtAvaileCarrier.Rows.Count <= 0)
+                                                continue;
+
+                                            if (dtAvaileCarrier.Rows.Count > 0)
+                                            {
+                                                bIsMatch = false;
+                                                string tmpMessage = "";
+                                                foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
+                                                {
+
+                                                    //Check Workgroup Set 
+                                                    bool bNoFind = true;
+                                                    sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["in_erack"].ToString());
+                                                    dtTemp = _dbTool.GetDataTable(sql);
+                                                    bool blocatecheck = false;
+                                                    foreach (DataRow drRack in dtTemp.Rows)
                                                     {
-                                                        bNoFind = false;
+                                                        if (drRack["MAC"].ToString().Equals("STOCK"))
+                                                            blocatecheck = true;
+
+                                                        if (blocatecheck)
+                                                        {
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (bNoFind)
+                                                    {
+                                                        continue;
+                                                    }
+                                                    //if (!draCarrier["locate"].ToString().Equals(dtWorkgroupSet.Rows[0]["out_erack"]))
+                                                    //    continue;
+
+                                                    CarrierID = "";
+                                                    //if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
+                                                    if (true)
+                                                    {   //output port 不用檢查lot id
+                                                        CarrierID = draCarrier["Carrier_ID"].ToString();
+                                                        bIsMatch = true;
+                                                    }
+                                                    else
+                                                    {
+                                                        bIsMatch = false;
+                                                        continue;
+                                                    }
+
+                                                    if (bIsMatch)
+                                                    {
+                                                        _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
                                                         break;
                                                     }
                                                 }
 
-                                                if (bNoFind)
-                                                {
-                                                    continue;
-                                                }
-                                                //if (!draCarrier["locate"].ToString().Equals(dtWorkgroupSet.Rows[0]["out_erack"]))
-                                                //    continue;
-
-                                                CarrierID = "";
-                                                //if (CheckIsAvailableLot(_dbTool, draCarrier["lot_id"].ToString(), drRecord["EquipID"].ToString()))
-                                                if (true)
-                                                {   //output port 不用檢查lot id
-                                                    CarrierID = draCarrier["Carrier_ID"].ToString();
-                                                    bIsMatch = true;
-                                                }
-                                                else
-                                                {
-                                                    bIsMatch = false;
-                                                    continue;
-                                                }
-
-                                                if (bIsMatch)
-                                                {
-                                                    _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, true), out tmpMessage, true);
+                                                if (!bIsMatch)
                                                     break;
+
+                                                if (!tmpMessage.Equals(""))
+                                                {
+                                                    _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
+                                                    continue;
+                                                }
+                                                drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            sql = string.Format(_BaseDataService.SelectTableCarrierTransferByCarrier(MetalRingCarrier));
+                                            dtTemp = _dbTool.GetDataTable(sql);
+
+                                            if(dtTemp.Rows.Count > 0)
+                                            {
+                                                drCarrierData = dtTemp.Select("carrier_id = '" + MetalRingCarrier + "'");
+                                                CarrierID = MetalRingCarrier;
+                                                if (_DebugMode)
+                                                {
+                                                    _logger.Debug(string.Format("[Port_Type] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), CarrierID, drRecord["PORT_ID"].ToString()));
                                                 }
                                             }
-
-                                            if (!bIsMatch)
-                                                break;
-
-                                            if (!tmpMessage.Equals(""))
-                                            {
-                                                _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
-                                                continue;
-                                            }
-                                            drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
                                         }
 
                                         lstTransfer.CommandType = "LOAD";
@@ -3336,6 +5181,7 @@ namespace RTDWebAPI.Service
                                         lstTransfer.CarrierID = CarrierID;
                                         lstTransfer.Quantity = drCarrierData[0]["QUANTITY"].ToString().Equals("") ? 0 : int.Parse(drCarrierData[0]["QUANTITY"].ToString());
                                         lstTransfer.CarrierType = drCarrierData[0]["COMMAND_TYPE"].ToString();
+                                        lstTransfer.CommandState = _commandState;
                                     }
                                     catch (Exception ex)
                                     { }
@@ -3352,6 +5198,8 @@ namespace RTDWebAPI.Service
                             //2. wait to unload 而且有其它適用的Carrier, 產生Swap指令(Load + Unload)
                             try
                             {
+                                string _outErack = "";
+
                                 iPortState = GetPortStatus(dtPortsInfo, drRecord["port_id"].ToString(), out sPortState);
                                 if (_DebugMode)
                                 {
@@ -3363,34 +5211,148 @@ namespace RTDWebAPI.Service
                                         //1. Transfer Blocked
                                         continue;
                                     case 2:
-                                        break;
                                     case 3:
                                     case 5:
                                         //2. Near Completion
                                         //3.Ready to Unload
                                         //5. Reject and Ready to unload
+                                        if (iPortState == 2)
+                                        {
+                                            if (bNearComplete)
+                                            {
+                                                _commandState = "NearComp";
+                                            }
+                                            else
+                                            {
+                                                //lstTransfer.CommandState = "NearComp";
+                                                _commandState = "";
+                                                break;
+                                            }
+                                        } else if (iPortState == 3)
+                                        {
+                                            _commandState = "";
+                                            if (isManualMode)
+                                                _OnlyUnload = true;
+                                        }
+                                        else
+                                        {
+                                            _commandState = "";
+                                        }
+
+                                        lstTransfer.CommandState = _commandState;
+
                                         try
                                         {
-                                            dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString()));
+                                            string _carrierLocate = "";
+                                            //rtsMachineState, rtsCurrentState, rtsDownState
+                                            //unload not need check rts state. Marked by Vance 20230710 YY req
+                                            //if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                            //{
+                                            //    //Do Nothing
+                                            //}
+                                            //else
+                                            //{
+                                            //    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                            //    continue;
+                                            //}
+                                            if (_expired)
+                                            {
+                                                if (isManualMode)
+                                                    continue;
+                                            }
+                                            else
+                                            {
+                                                //Not expired. Manual more still do Unload
+                                            }
+
+                                            dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["PORT_ID"].ToString(), tableOrder));
                                             if (dtWorkInProcessSch.Rows.Count > 0)
                                                 continue;
 
+                                            try
+                                            {
+                                                if (bBindWorkgroup)
+                                                {
+                                                    if (ineRack.Trim().Equals(""))
+                                                    {
+                                                        //back stage
+                                                        //need get front stage loadport id
+
+                                                    }
+                                                    if (outeRack.Trim().Equals(""))
+                                                    {
+                                                        //front stage
+                                                        //EQ to EQ, do not run unload logic
+                                                        continue;
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception ex) { }
+
                                             //取得當前Load Port上的Carrier
-                                            dtLoadPortCarrier = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["EQUIPID"].ToString()));
+                                            dtLoadPortCarrier = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(drRecord["EQUIPID"].ToString(), tableOrder));
                                             if (dtLoadPortCarrier is not null)
                                             {
                                                 if (dtLoadPortCarrier.Rows.Count > 0)
                                                 {
                                                     drIn = dtLoadPortCarrier.Select("PORTNO = '" + drRecord["PORT_SEQ"].ToString() + "'");
+                                                    UnloadCarrierID = drIn is null ? "" : drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "";
                                                 }
                                             }
 
-                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true);
+                                            if (_OnlyUnload)
+                                                goto UnloadLogic;
+
+                                            if (bPrepareNextWorkgroup)
+                                            {
+                                                //PrepareNextWorkgroup If it have set, run this logic
+                                                //Get available equipment number
+                                                //SelectAvailableCarrierIncludeEQPByCarrierType
+                                                dtPrepareNextWorkgroup = null;
+                                                sql = _BaseDataService.QureyPrepareNextWorkgroupNumber(_Workgroup);
+                                                dtPrepareNextWorkgroup = _dbTool.GetDataTable(sql);
+
+                                                if (dtPrepareNextWorkgroup.Rows.Count > 0)
+                                                {
+                                                    dtAvaileCarrier = GetAvailableCarrier2(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                }
+                                                else
+                                                    continue;
+                                            }
+                                            else
+                                            {
+                                                try
+                                                {
+                                                    if (bBindWorkgroup)
+                                                    {
+                                                        if (ineRack.Trim().Equals(""))
+                                                        {
+                                                            //back stage(AOI)
+                                                            //Not need to load carrier
+                                                            tmpRack = "";
+                                                            dtAvaileCarrier = GetAvailableCarrierFromEQP(_dbTool, drRecord["port_id"].ToString(), drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                        }
+                                                        else if (outeRack.Trim().Equals(""))
+                                                        {
+                                                            //front stage(WAFER CLEAN)
+
+                                                        }
+                                                        else
+                                                        {
+                                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                        }
+                                                    }
+                                                    else
+                                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                }
+                                                catch (Exception ex) { }
+                                            }
 
                                             int iQty = 0; int iQuantity = 0; int iTotalQty = 0;
                                             int iCountOfCarr = 0;
                                             bool isLastLot = false;
                                             bool bNoFind = true;
+                                            
 
                                             //AvaileCarrier is true
                                             if (dtAvaileCarrier.Rows.Count > 0)
@@ -3399,16 +5361,93 @@ namespace RTDWebAPI.Service
                                                 string tmpMessage = "";
                                                 foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
                                                 {
+                                                    string _custdevice2 = "";
+                                                    DataRow[] drTemp;
+
+                                                    _carrierLocate = "";
+                                                    try
+                                                    {
+                                                        iPrepareCustDeviceNo = 0;
+                                                        iProcessCustDeviceNo = 0;
+                                                        iProcessNextWorkgroup = 0;
+
+                                                        try
+                                                        {
+                                                            _carrierLocate = draCarrier["locate"].ToString();
+                                                        }
+                                                        catch (Exception ex) { }
+
+                                                        if (bPrepareNextWorkgroup)
+                                                        {
+                                                            _custdevice2 = draCarrier["custdevice"].ToString();
+
+                                                            drTemp = dtPrepareNextWorkgroup.Select(string.Format("custdevice='{0}'", _custdevice2));
+
+                                                            if (drTemp.Length <= 0)
+                                                            {
+                                                                //_logger.Info(string.Format("custDevice incorrect. [{0}]/[{1}]", draCarrier["lot_id"].ToString(), _custdevice2));
+                                                                continue;
+                                                            }
+
+                                                            iPrepareCustDeviceNo = int.Parse(drTemp[0]["deviceQty"].ToString()) * _iPrepareQty;
+                                                            //iProcessCustDeviceNo = 0;
+
+                                                            dtCurrentWorkgroupProcess = null;
+                                                            sql = _BaseDataService.QureyCurrentWorkgroupProcessNumber(_Workgroup);
+                                                            dtCurrentWorkgroupProcess = _dbTool.GetDataTable(sql);
+                                                            drTemp = dtCurrentWorkgroupProcess.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                            iProcessCustDeviceNo = int.Parse(drTemp[0]["deviceQty"].ToString());
+
+                                                            dtCurrentWorkgroupProcess = null;
+                                                            sql = _BaseDataService.QureyProcessNextWorkgroupNumber(_Workgroup);
+                                                            dtCurrentWorkgroupProcess = _dbTool.GetDataTable(sql);
+                                                            drTemp = dtCurrentWorkgroupProcess.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                            iProcessNextWorkgroup = int.Parse(drTemp[0]["deviceQty"].ToString());
+                                                            //增加貨架上屬於當站的數量
+                                                            int iQtyonerack = 0;
+                                                            try
+                                                            {
+                                                                sql = _BaseDataService.QureyLotQtyOnerackForNextWorkgroup(_Workgroup);
+                                                                dtTemp = _dbTool.GetDataTable(sql);
+
+                                                                if (dtTemp.Rows.Count > 0)
+                                                                {
+                                                                    drTemp = dtTemp.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                                    iQtyonerack = int.Parse(drTemp[0]["onerackQty"].ToString());
+                                                                    //iQtyonerack = int.Parse(dtTemp.Rows[0]["onerackQty"].ToString());
+                                                                }
+                                                            }
+                                                            catch (Exception ex) { }
+
+                                                            if (iQtyonerack > 0)
+                                                            {
+                                                                //_logger.Info(string.Format("on erack available carrier have [{0}]", iQtyonerack));
+                                                                iProcessCustDeviceNo = iProcessCustDeviceNo + iQtyonerack + iProcessNextWorkgroup;
+                                                            }
+
+                                                            //SWAP allow parepare one more carrier
+                                                            _logger.Info(string.Format("Prepare Qty: PortState [{0}], Prepare Qty [{1}], Process Qty [{2}]", iPortState, iPrepareCustDeviceNo, iProcessCustDeviceNo));
+                                                            if (iProcessCustDeviceNo >= iPrepareCustDeviceNo)
+                                                            {
+                                                                _logger.Info(string.Format("on erack available carrier have [{0}]/[{1}][{2}]", iQtyonerack, iProcessCustDeviceNo, iPrepareCustDeviceNo));
+                                                                continue; 
+                                                            }
+                                                        }
+                                                    }
+                                                    catch (Exception ex) {
+                                                        _logger.Info(string.Format("Prepare Exception:[{0}]", ex.Message));
+                                                    }
+
                                                     iQty = 0; iTotalQty = 0; iQuantity = 0;
 
                                                     //站點不當前站點不同, 不取這批lot
                                                     if (!draCarrier["lot_id"].ToString().Equals(""))
                                                     {
+                                                        sql = _BaseDataService.CheckLotStage(configuration["CheckLotStage:Table"], draCarrier["lot_id"].ToString());
+                                                        dtTemp = _dbTool.GetDataTable(sql);
+
                                                         if (configuration["AppSettings:Work"].ToUpper().Equals("EWLB"))
                                                         {
-                                                            sql = _BaseDataService.CheckLotStage(configuration["CheckLotStage:Table"], draCarrier["lot_id"].ToString());
-                                                            dtTemp = _dbTool.GetDataTable(sql);
-
                                                             if (dtTemp.Rows.Count <= 0)
                                                                 continue;
                                                             else
@@ -3419,18 +5458,91 @@ namespace RTDWebAPI.Service
                                                                 }
                                                             }
                                                         }
+                                                        else
+                                                        {
+                                                            if (dtTemp.Rows.Count > 0)
+                                                            {
+                                                                if (!dtTemp.Rows[0]["stage1"].ToString().Equals(dtTemp.Rows[0]["stage2"].ToString()))
+                                                                {
+                                                                    _logger.Debug(string.Format("---LotID= {0}, RTD_Stage={1}, MES_Stage={2}, RTD_State={3}, MES_State={4}", draCarrier["lot_id"].ToString(), dtTemp.Rows[0]["stage1"].ToString(), dtTemp.Rows[0]["stage2"].ToString(), dtTemp.Rows[0]["state1"].ToString(), dtTemp.Rows[0]["state2"].ToString()));
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    //Check Equipment CustDevice / Lot CustDevice is same.
+                                                    if (!EquipCustDevice.Trim().Equals(""))
+                                                    {
+                                                        string device = "";
+                                                        sql = _BaseDataService.QueryLotInfoByCarrierID(draCarrier["carrier_id"].ToString());
+                                                        dtTemp = _dbTool.GetDataTable(sql);
+                                                        if (dtTemp.Rows.Count > 0)
+                                                        {
+                                                            //DataTable dtTemp2;
+                                                            sql = _BaseDataService.QueryDataByLotid(dtTemp.Rows[0]["lot_id"].ToString(), GetExtenalTables(configuration, "SyncExtenalData", "AdsInfo"));
+                                                            dtTemp2 = _dbTool.GetDataTable(sql);
+                                                            //select lot_age, custDevice from semi_int.rtd_cis_ads_vw @SEMI_INT where lotid = '83727834.1';
+                                                            if (dtTemp2.Rows.Count > 0)
+                                                            {
+
+                                                                device = dtTemp2.Rows[0]["custdevice"].ToString();
+                                                                if (!device.Trim().Equals(""))
+                                                                {
+                                                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] device[{1}] EquipCustDevice[{2}]", _oEventQ.EventName, device, EquipCustDevice));
+
+                                                                    if (bCustDevice)
+                                                                    {
+                                                                        if (!device.Equals(EquipCustDevice))
+                                                                        {
+                                                                            _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+
+                                                                            continue;
+                                                                        }
+                                                                    }
+                                                                }
+                                                                else
+                                                                {
+                                                                    ///the lot custDevice is empty, the carrier can not dispatching to tools.
+                                                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}, lot custDevice is null.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                    continue;
+                                                                }
+                                                            }
+                                                            else
+                                                            {
+                                                                ///can not get lot from ads system.
+                                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] Can not get lot from ads.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                continue;
+                                                            }
+                                                        }
+                                                        else
+                                                            continue;
                                                     }
 
                                                     //Check Workgroup Set 
                                                     bNoFind = true;
                                                     sql = _BaseDataService.QueryRackByGroupID(dtWorkgroupSet.Rows[0]["in_erack"].ToString());
                                                     dtTemp = _dbTool.GetDataTable(sql);
+                                                    bool blocatecheck = false;
                                                     foreach (DataRow drRack in dtTemp.Rows)
                                                     {
-                                                        if (draCarrier["locate"].ToString().Equals(drRack["erackID"].ToString()))
+                                                        if (drRack["MAC"].ToString().Equals("STOCK"))
+                                                            blocatecheck = true;
+
+                                                        if (blocatecheck)
                                                         {
-                                                            bNoFind = false;
-                                                            break;
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
+                                                            {
+                                                                bNoFind = false;
+                                                                break;
+                                                            }
                                                         }
                                                     }
 
@@ -3551,6 +5663,10 @@ namespace RTDWebAPI.Service
 
                                                 if (!tmpMessage.Equals(""))
                                                 {
+                                                    if (_DebugMode)
+                                                    {
+                                                        _logger.Debug(string.Format("[tmpMessage] {0} / {1} ", drRecord["EQUIPID"].ToString(), tmpMessage));
+                                                    }
                                                     _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
                                                     continue;
                                                 }
@@ -3561,7 +5677,7 @@ namespace RTDWebAPI.Service
                                                 _logger.Debug(string.Format("[Build Unload Command] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), bIsMatch, dtAvaileCarrier.Rows.Count));
                                             }
 
-                                            if (dtAvaileCarrier.Rows.Count <= 0 || bIsMatch || CarrierID.Equals("") || bNoFind)
+                                            if (dtAvaileCarrier.Rows.Count <= 0 || bIsMatch || CarrierID.Equals("") || bNoFind || isManualMode)
                                             {
                                                 if (_DebugMode)
                                                 {
@@ -3579,20 +5695,53 @@ namespace RTDWebAPI.Service
                                                 string tempDest = "";
                                                 string tmpReject = configuration["Reject:ERACK"] is not null ? configuration["Reject:ERACK"] : "IN_ERACK";
                                                 if (iPortState.Equals(5))
-                                                    tempDest = drRecord[tmpReject].ToString();
+                                                {
+                                                    if (useFaileRack)
+                                                    {
+                                                        tempDest = faileRack;
+                                                    }
+                                                    else
+                                                    {
+                                                        tempDest = drRecord[tmpReject].ToString();
+                                                    }
+                                                }
                                                 else
                                                     tempDest = drRecord["OUT_ERACK"].ToString();
 
+                                                try
+                                                {
+                                                    //out eRack STK1
+                                                    sql = _BaseDataService.QueryRackByGroupID(tempDest);
+                                                    dtTemp2 = _dbTool.GetDataTable(sql);
+                                                    //A/B
+                                                    if (dtTemp2.Rows.Count > 0)
+                                                    {
+                                                        if (dtTemp2.Rows[0]["MAC"].ToString().Equals("STOCK"))
+                                                        {
+                                                            _outErack = dtTemp2.Rows[0]["erackID"].ToString();
+                                                        }
+                                                        else
+                                                        {
+                                                            _outErack = tempDest;
+                                                        }
+                                                    }
+                                                }
+                                                catch (Exception ex)
+                                                {
+                                                    _logger.Debug(string.Format("[Exception STK: {0}]", _outErack));
+                                                }
+
                                                 lstTransfer.CommandType = "UNLOAD";
                                                 lstTransfer.Source = drRecord["PORT_ID"].ToString();
-                                                lstTransfer.Dest = tempDest;
-                                                lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : "*";
+                                                lstTransfer.Dest = _outErack;
+                                                lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                                 if (!lstTransfer.CarrierID.Equals(""))
                                                 {
                                                     lstTransfer.LotID = "";
                                                 }
                                                 lstTransfer.Quantity = 0;
-                                                lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                                lstTransfer.CommandState = _commandState;
 
                                                 if (_DebugMode)
                                                 {
@@ -3608,39 +5757,86 @@ namespace RTDWebAPI.Service
                                                 }
                                                 //break;
                                             }
+
+                                            ///Equip is Manual Mode
+                                            if (isManualMode)
+                                            {
+                                                _logger.Debug(string.Format("[Current Equipment Manual Mode] {0} / {1}", drRecord["PORT_ID"].ToString(), isManualMode));
+                                                break;
+                                            }
+
                                             //AvaileCarrier is true
                                             if (bIsMatch)
                                             {
                                                 drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
                                             }
 
-                                            if (drCarrierData.Length > 0)
+                                            if (!isManualMode)
                                             {
-                                                lstTransfer = new TransferList();
+                                                if (drCarrierData is null)
+                                                    continue;
 
-                                                lstTransfer.CommandType = "LOAD";
-                                                lstTransfer.Source = "*";
-                                                lstTransfer.Dest = drRecord["PORT_ID"].ToString();
-                                                lstTransfer.CarrierID = CarrierID;
-                                                iQty = drCarrierData == null ? 0 : int.Parse(drCarrierData[0]["QUANTITY"].ToString());
-                                                lstTransfer.Quantity = iQty;
-                                                lstTransfer.CarrierType = drCarrierData == null ? "" : drCarrierData[0]["COMMAND_TYPE"].ToString();
-                                                lstTransfer.Total = iTotalQty;
-                                                lstTransfer.IsLastLot = isLastLot ? 1 : 0;
-                                                
-
-                                                if (_DebugMode)
+                                                if (drCarrierData.Length > 0)
                                                 {
-                                                    _logger.Debug(string.Format("[dtAvaileCarrier] LOAD Command [{0}] / {1}", lstTransfer.CarrierID, normalTransfer.Transfer.Count));
-                                                }
+                                                    if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                                    {
+                                                        if (!isManualMode)
+                                                        {
+                                                            tmpRack = "";
+                                                            if (bBindWorkgroup)
+                                                            {
+                                                                if (ineRack.Trim().Equals(""))
+                                                                {
+                                                                    tmpRack = _carrierLocate;
+                                                                }
+                                                                else if (outeRack.Trim().Equals(""))
+                                                                {
+                                                                    //front stage(WAFER CLEAN)
 
-                                                if (iReplace < 1)
-                                                {
-                                                    normalTransfer.Transfer.Add(lstTransfer);
-                                                    iReplace++;
+                                                                }
+                                                                else
+                                                                {
+                                                                    tmpRack = "*";
+                                                                }
+                                                            }
+                                                            else
+                                                                tmpRack = "*";
+
+                                                            //Reject 時, 設備不是Manual mode 才產生LOAD指令
+                                                            lstTransfer = new TransferList();
+
+                                                            lstTransfer.CommandType = "LOAD";
+                                                            lstTransfer.Source = tmpRack;
+                                                            lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                                            lstTransfer.CarrierID = CarrierID;
+                                                            iQty = drCarrierData == null ? 0 : int.Parse(drCarrierData[0]["QUANTITY"].ToString());
+                                                            lstTransfer.Quantity = iQty;
+                                                            lstTransfer.CarrierType = drCarrierData == null ? "" : drCarrierData[0]["COMMAND_TYPE"].ToString();
+                                                            lstTransfer.Total = iTotalQty;
+                                                            lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                                            lstTransfer.CommandState = _commandState;
+
+
+                                                            if (_DebugMode)
+                                                            {
+                                                                _logger.Debug(string.Format("[dtAvaileCarrier] LOAD Command [{0}] / {1}", lstTransfer.CarrierID, normalTransfer.Transfer.Count));
+                                                            }
+
+                                                            if (iReplace < 1)
+                                                            {
+                                                                normalTransfer.Transfer.Add(lstTransfer);
+                                                                iReplace++;
+                                                            }
+                                                            else
+                                                                break;
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                                        continue;
+                                                    }
                                                 }
-                                                else
-                                                    break;
                                             }
 
                                             if (_DebugMode)
@@ -3651,6 +5847,8 @@ namespace RTDWebAPI.Service
                                             if (CarrierID.Equals(""))
                                                 CarrierID = dtLoadPortCarrier.Rows[0]["CARRIER_ID"].ToString();
 
+
+                                            UnloadLogic:
                                             //檢查Out port 與 In port 的carrier type是否相同
                                             drOut = dtPortsInfo.Select("Port_Type='IO'");
                                             if (drOut.Length > 0)
@@ -3665,18 +5863,21 @@ namespace RTDWebAPI.Service
                                                         case 0:
                                                         case 1:
                                                         case 4:
-                                                            break;
                                                         case 2:
+                                                            break;
                                                         case 3:
+                                                        case 5:
                                                         default:
                                                             CarrierID = drIn is not null ? drIn.Length > 0 ? drIn[0]["CARRIER_ID"].ToString() : "" : "";
 
                                                             lstTransfer.CommandType = "UNLOAD";
                                                             lstTransfer.Source = drRecord["PORT_ID"].ToString();
                                                             lstTransfer.Dest = drRecord["OUT_ERACK"].ToString();
-                                                            lstTransfer.CarrierID = CarrierID.Equals("") ? "*" : CarrierID;
+                                                            lstTransfer.CarrierID = UnloadCarrierID.Equals("") ? "*" : UnloadCarrierID;
                                                             lstTransfer.Quantity = 0;
-                                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                            //lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : "";
+                                                            lstTransfer.CarrierType = dtLoadPortCarrier.Rows.Count > 0 ? dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString().Equals("") ? _CarrierTypebyPort : dtLoadPortCarrier.Rows[0]["COMMAND_TYPE"].ToString() : _CarrierTypebyPort;
+                                                            lstTransfer.CommandState = _commandState;
                                                             break;
                                                     }
 
@@ -3691,6 +5892,19 @@ namespace RTDWebAPI.Service
                                         //4. Empty (Ready to load)
                                         try
                                         {
+                                            //rtsMachineState, rtsCurrentState, rtsDownState
+                                            if (rtsCurrentState.Equals("UP") || (rtsCurrentState.Equals("DOWN") && rtsDownState.Equals("IDLE")))
+                                            {
+                                                //Do Nothing
+                                                if (isManualMode)
+                                                    continue;
+                                            }
+                                            else
+                                            {
+                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][RTS Status no match.] {0} / {1} / {2} / RTS Current Status: {3}, Down State: {4}", drRecord["EQUIPID"].ToString(), drRecord["Port_Type"].ToString(), drRecord["port_id"].ToString(), rtsCurrentState, rtsDownState));
+                                                continue;
+                                            }
+
                                             if (bStageIssue)
                                             {
                                                 sql = _BaseDataService.LockLotInfoWhenReady(lotID);
@@ -3703,15 +5917,93 @@ namespace RTDWebAPI.Service
                                                 continue;
                                             }
 
-                                            dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString()));
+                                            dtWorkInProcessSch = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(drRecord["PORT_ID"].ToString(), tableOrder));
                                             if (dtWorkInProcessSch.Rows.Count > 0)
-                                                continue;
+                                            {
+                                                if (_DebugMode)
+                                                {
+                                                    _logger.Debug(string.Format("[WorkInProcessSch] {0} / {1} The lotid has already exist WorkInProcessSch.", drRecord["EQUIPID"].ToString(), lotID));
+                                                }
 
-                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true);
+                                                continue;
+                                            }
+
+                                            try
+                                            {
+                                                if (bBindWorkgroup)
+                                                {
+                                                    if (ineRack.Trim().Equals(""))
+                                                    {
+                                                        //back stage(AOI)
+                                                        //Not need to load carrier
+                                                        tmpRack = "";
+                                                    }
+                                                    if (outeRack.Trim().Equals(""))
+                                                    {
+                                                        //front stage(WAFER CLEAN)
+                                                        
+                                                    }
+                                                }
+                                            }
+                                            catch (Exception ex) { }
+
+                                            if (bPrepareNextWorkgroup)
+                                            {
+                                                //PrepareNextWorkgroup If it have set, run this logic
+                                                //Get available equipment number
+                                                //SelectAvailableCarrierIncludeEQPByCarrierType
+                                                dtPrepareNextWorkgroup = null;
+                                                sql = _BaseDataService.QureyPrepareNextWorkgroupNumber(_Workgroup);
+                                                dtPrepareNextWorkgroup = _dbTool.GetDataTable(sql);
+
+                                                if (dtPrepareNextWorkgroup.Rows.Count > 0)
+                                                {
+                                                    dtAvaileCarrier = GetAvailableCarrier2(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                }
+                                                else
+                                                    continue;
+                                            }
+                                            else
+                                            {
+                                                try
+                                                {
+                                                    if (bBindWorkgroup)
+                                                    {
+                                                        if (ineRack.Trim().Equals(""))
+                                                        {
+                                                            //back stage(AOI)
+                                                            //Not need to load carrier
+                                                            tmpRack = "";
+                                                            dtAvaileCarrier = GetAvailableCarrierFromEQP(_dbTool, drRecord["port_id"].ToString(), drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                        }
+                                                        else if (outeRack.Trim().Equals(""))
+                                                        {
+                                                            //front stage(WAFER CLEAN)
+
+                                                        }
+                                                        else
+                                                        {
+                                                            dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                        }
+                                                    }
+                                                    else
+                                                        dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
+                                                }
+                                                catch (Exception ex) { }
+                                            }
+
+                                            //dtAvaileCarrier = GetAvailableCarrier(_dbTool, drRecord["CARRIER_TYPE"].ToString(), true, _keyRTDEnv);
                                             if (dtAvaileCarrier is null)
                                                 continue;
                                             if (dtAvaileCarrier.Rows.Count <= 0)
+                                            {
+                                                if (_DebugMode)
+                                                {
+                                                    _logger.Debug(string.Format("[Availe Carrier] {0} / {1} Have not Available Carrier.", drRecord["EQUIPID"].ToString(), lotID));
+                                                }
+
                                                 continue;
+                                            }
 
                                             if (_DebugMode)
                                             {
@@ -3721,6 +6013,7 @@ namespace RTDWebAPI.Service
                                             int iQty = 0; int iQuantity = 0; int iTotalQty = 0;
                                             int iCountOfCarr = 0;
                                             bool isLastLot = false;
+                                            string _carrierLocate = "";
 
                                             if (dtAvaileCarrier.Rows.Count > 0)
                                             {
@@ -3733,8 +6026,80 @@ namespace RTDWebAPI.Service
                                                 string tmpMessage = "";
                                                 try
                                                 {
+                                                    string _custdevice2 = "";
+                                                    DataRow[] drTemp;
+
                                                     foreach (DataRow draCarrier in dtAvaileCarrier.Rows)
                                                     {
+                                                        _carrierLocate = "";
+                                                        try {
+                                                            iPrepareCustDeviceNo = 0;
+                                                            iProcessCustDeviceNo = 0;
+                                                            iProcessNextWorkgroup = 0;
+
+                                                            try
+                                                            {
+                                                                _carrierLocate = draCarrier["locate"].ToString();
+                                                            }catch(Exception ex) { }
+
+                                                            if (bPrepareNextWorkgroup)
+                                                            {
+                                                                _custdevice2 = draCarrier["custdevice"].ToString();
+
+                                                                drTemp = dtPrepareNextWorkgroup.Select(string.Format("custdevice='{0}'", _custdevice2));
+
+                                                                if (drTemp.Length <= 0)
+                                                                {
+                                                                    //_logger.Info(string.Format("custDevice incorrect. [{0}]/[{1}]", draCarrier["lot_id"].ToString(), _custdevice2));
+                                                                    continue;
+                                                                }
+
+                                                                iPrepareCustDeviceNo = int.Parse(drTemp[0]["deviceQty"].ToString()) * _iPrepareQty;
+                                                                //iProcessCustDeviceNo = 0;
+
+                                                                dtCurrentWorkgroupProcess = null;
+                                                                sql = _BaseDataService.QureyCurrentWorkgroupProcessNumber(_Workgroup);
+                                                                dtCurrentWorkgroupProcess = _dbTool.GetDataTable(sql);
+                                                                drTemp = dtCurrentWorkgroupProcess.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                                iProcessCustDeviceNo = int.Parse(drTemp[0]["deviceQty"].ToString());
+
+                                                                dtCurrentWorkgroupProcess = null;
+                                                                sql = _BaseDataService.QureyProcessNextWorkgroupNumber(_Workgroup);
+                                                                dtCurrentWorkgroupProcess = _dbTool.GetDataTable(sql);
+                                                                drTemp = dtCurrentWorkgroupProcess.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                                iProcessNextWorkgroup = int.Parse(drTemp[0]["deviceQty"].ToString());
+
+                                                                //增加貨架上屬於當站的數量
+                                                                int iQtyonerack = 0;
+                                                                try {
+                                                                    sql = _BaseDataService.QureyLotQtyOnerackForNextWorkgroup(_Workgroup);
+                                                                    dtTemp = _dbTool.GetDataTable(sql);
+
+                                                                    if(dtTemp.Rows.Count > 0)
+                                                                    {
+                                                                        drTemp = dtTemp.Select(string.Format("custdevice='{0}'", _custdevice2));
+                                                                        iQtyonerack = int.Parse(drTemp[0]["onerackQty"].ToString());
+                                                                        //iQtyonerack = int.Parse(dtTemp.Rows[0]["onerackQty"].ToString());
+                                                                    }
+                                                                }
+                                                                catch(Exception ex) { }
+
+                                                                if(iQtyonerack > 0)
+                                                                {
+                                                                    //_logger.Info(string.Format("on erack available carrier have [{0}]", iQtyonerack));
+                                                                    iProcessCustDeviceNo = iProcessCustDeviceNo + iQtyonerack + iProcessNextWorkgroup;
+                                                                }
+
+                                                                _logger.Info(string.Format("PortState [{0}], Prepare Qty [{1}], Process Qty [{2}]", iPortState, iPrepareCustDeviceNo, iProcessCustDeviceNo));
+                                                                if (iProcessCustDeviceNo >= iPrepareCustDeviceNo)
+                                                                {
+                                                                    _logger.Info(string.Format("on erack available carrier have [{0}]", iQtyonerack));
+                                                                    continue; 
+                                                                }
+                                                            }
+                                                        }
+                                                        catch(Exception ex) { }
+
                                                         iQty = 0; iTotalQty = 0; iQuantity = 0;
 
                                                         //Check Workgroup Set 
@@ -3763,23 +6128,23 @@ namespace RTDWebAPI.Service
                                                                     {
                                                                         if (_DebugMode)
                                                                         {
-                                                                            _logger.Debug(string.Format("[drRack] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), draCarrier["locate"].ToString(), drRack["erackID"].ToString()));
+                                                                            _logger.Debug(string.Format("[drRack] {0} / {1} / {2} / {3} / {4}", drRecord["EQUIPID"].ToString(), draCarrier["carrier_id"].ToString(), draCarrier["locate"].ToString(), drRack["erackID"].ToString(), draCarrier["lot_id"].ToString()));
                                                                         }
 
-                                                                        if (draCarrier["locate"].ToString().Equals(drRack["erackID"].ToString()))
+                                                                        if (draCarrier["locate"].ToString().StartsWith(drRack["erackID"].ToString()))
                                                                         {
                                                                             bNoFind = false;
 
                                                                             if (_DebugMode)
                                                                             {
-                                                                                _logger.Debug(string.Format("[AvailableCarrier ErackID] {0} / {1}", drRecord["EQUIPID"].ToString(), drRack["erackID"].ToString()));
+                                                                                _logger.Debug(string.Format("[AvailableCarrier ErackID] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), drRack["erackID"].ToString(), draCarrier["carrier_id"].ToString()));
                                                                             }
                                                                             break;
                                                                         }
 
                                                                         if (_DebugMode)
                                                                         {
-                                                                            _logger.Debug(string.Format("[No Find] {0} / {1} / {2}", drRecord["EQUIPID"].ToString(), draCarrier["locate"].ToString(), drRack["erackID"].ToString()));
+                                                                            _logger.Debug(string.Format("[No Find] {0}/ {1}/ {2}/ {3}/ {4}", drRecord["EQUIPID"].ToString(), draCarrier["carrier_id"].ToString(), draCarrier["locate"].ToString(), drRack["erackID"].ToString(), draCarrier["lot_id"].ToString()));
                                                                         }
                                                                     }
                                                                     catch (Exception ex)
@@ -3802,7 +6167,56 @@ namespace RTDWebAPI.Service
 
                                                         if (_DebugMode)
                                                         {
-                                                            _logger.Debug(string.Format("[Check Workgroup Set ] {0} / {1}", drRecord["EQUIPID"].ToString(), dtTemp.Rows.Count.ToString()));
+                                                            //_logger.Debug(string.Format("[Check Workgroup Set ] {0} / {1}", drRecord["EQUIPID"].ToString(), dtTemp.Rows.Count.ToString()));
+                                                        }
+
+                                                        //Check Equipment CustDevice / Lot CustDevice is same.
+                                                        if (!EquipCustDevice.Trim().Equals(""))
+                                                        {
+                                                            string device = "";
+                                                            sql = _BaseDataService.QueryLotInfoByCarrierID(draCarrier["carrier_id"].ToString());
+                                                            dtTemp = _dbTool.GetDataTable(sql);
+                                                            if (dtTemp.Rows.Count > 0)
+                                                            {
+                                                                //DataTable dtTemp2;
+                                                                sql = _BaseDataService.QueryDataByLotid(dtTemp.Rows[0]["lot_id"].ToString(), GetExtenalTables(configuration, "SyncExtenalData", "AdsInfo"));
+                                                                dtTemp2 = _dbTool.GetDataTable(sql);
+                                                                //select lot_age, custDevice from semi_int.rtd_cis_ads_vw @SEMI_INT where lotid = '83727834.1';
+                                                                if (dtTemp2.Rows.Count > 0)
+                                                                {
+
+                                                                    device = dtTemp2.Rows[0]["custdevice"].ToString();
+                                                                    if (!device.Trim().Equals(""))
+                                                                    {
+                                                                        if (bCustDevice)
+                                                                        {
+                                                                            if (_DebugMode)
+                                                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}] device[{1}] EquipCustDevice[{2}]", _oEventQ.EventName, device, EquipCustDevice));
+
+                                                                            if (!device.Equals(EquipCustDevice))
+                                                                            {
+                                                                                _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+
+                                                                                continue;
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        ///the lot custDevice is empty, the carrier can not dispatching to tools.
+                                                                        _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] {2} / {3}, lot custDevice is null.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                        continue;
+                                                                    }
+                                                                }
+                                                                else
+                                                                {
+                                                                    ///can not get lot from ads system.
+                                                                    _logger.Debug(string.Format("[CreateTransferCommandByPortModel][{0}][{1}] Can not get lot from ads.", _oEventQ.EventName, draCarrier["carrier_id"].ToString(), device, EquipCustDevice));
+                                                                    continue;
+                                                                }
+                                                            }
+                                                            else
+                                                                continue;
                                                         }
 
                                                         if (bNoFind)
@@ -3937,20 +6351,49 @@ namespace RTDWebAPI.Service
 
                                                 if (!tmpMessage.Equals(""))
                                                 {
+                                                    if (_DebugMode)
+                                                    {
+                                                        _logger.Debug(string.Format("[tmpMessage] {0} / {1}", drRecord["EQUIPID"].ToString(), tmpMessage));
+                                                    }
+
                                                     _dbTool.SQLExec(_BaseDataService.UpdateTableReserveCarrier(CarrierID, false), out tmpMessage, true);
                                                     continue;
                                                 }
                                                 drCarrierData = dtAvaileCarrier.Select("carrier_id = '" + CarrierID + "'");
                                             }
 
-                                            lstTransfer.CommandType = "LOAD";
-                                            lstTransfer.Source = "*";
-                                            lstTransfer.Dest = drRecord["PORT_ID"].ToString();
-                                            lstTransfer.CarrierID = CarrierID;
-                                            lstTransfer.Quantity = drCarrierData[0]["QUANTITY"].ToString().Equals("") ? 0 : int.Parse(drCarrierData[0]["QUANTITY"].ToString());
-                                            lstTransfer.CarrierType = drCarrierData[0]["COMMAND_TYPE"].ToString();
-                                            lstTransfer.Total = iTotalQty;
-                                            lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                            if (!isManualMode)
+                                            {
+                                                tmpRack = "";
+                                                if (bBindWorkgroup)
+                                                {
+                                                    if (ineRack.Trim().Equals(""))
+                                                    {
+                                                        tmpRack = _carrierLocate;
+                                                    }
+                                                    else if (outeRack.Trim().Equals(""))
+                                                    {
+                                                        //front stage(WAFER CLEAN)
+
+                                                    }
+                                                    else
+                                                    {
+                                                        tmpRack = "*";
+                                                    }
+                                                }
+                                                else
+                                                    tmpRack = "*";
+
+                                                lstTransfer.CommandType = "LOAD";
+                                                lstTransfer.Source = tmpRack;
+                                                lstTransfer.Dest = drRecord["PORT_ID"].ToString();
+                                                lstTransfer.CarrierID = CarrierID;
+                                                lstTransfer.Quantity = drCarrierData[0]["QUANTITY"].ToString().Equals("") ? 0 : int.Parse(drCarrierData[0]["QUANTITY"].ToString());
+                                                lstTransfer.CarrierType = drCarrierData[0]["COMMAND_TYPE"].ToString();
+                                                lstTransfer.Total = iTotalQty;
+                                                lstTransfer.IsLastLot = isLastLot ? 1 : 0;
+                                                lstTransfer.CommandState = _commandState;
+                                            }
                                         }
                                         catch (Exception ex)
                                         {
@@ -3983,6 +6426,14 @@ namespace RTDWebAPI.Service
                             iReplace++;
                         }
                     }
+
+                    UnloadCarrierID = "";
+
+                    if (normalTransfer.Transfer.Count > 0)
+                    {
+                        if (!_portModel.Equals("1I1OT2"))
+                            break;
+                    }
                 }
                 normalTransfer.Replace = iReplace > 0 ? iReplace - 1 : 0;
 
@@ -3996,6 +6447,7 @@ namespace RTDWebAPI.Service
                 //將所產生的指令加入WorkInProcess_Sch
                 bool single = true;
                 DataTable dtExist = new DataTable();
+                EQPLastWaferTime _oLastWaferTime;
 
                 tmpMsg = "";
                 if (normalTransfer.Transfer is not null)
@@ -4008,42 +6460,144 @@ namespace RTDWebAPI.Service
                     if (normalTransfer.Transfer.Count > 0)
                     {
                         string tmpCarrierid = "";
+                        int eqp_priority = 20;
+                        List<string> lstEquips = new List<string>();
 
-                        if (!single)
-                            normalTransfer.CommandID = Tools.GetCommandID(_dbTool);
+                        if (normalTransfer.Transfer.Count > 1)
+                        { single = false; }
+
+                        //if (!single)
+                            //normalTransfer.CommandID = Tools.GetCommandID(_dbTool);
 
                         SchemaWorkInProcessSch workinProcessSch = new SchemaWorkInProcessSch();
-                        workinProcessSch.UUID = Tools.GetUnitID(_dbTool);
-                        workinProcessSch.Cmd_Id = normalTransfer.CommandID;
+                        //workinProcessSch.UUID = Tools.GetUnitID(_dbTool);
+                        workinProcessSch.UUID = "";
+                        //workinProcessSch.Cmd_Id = normalTransfer.CommandID;
+                        workinProcessSch.Cmd_Id = "";
                         workinProcessSch.Cmd_State = "";    //派送前為NULL
                         workinProcessSch.EquipId = normalTransfer.EquipmentID;
                         workinProcessSch.Cmd_Current_State = "";    //派送前為NULL
-                        workinProcessSch.Priority = 10;             //預設優先權為10
+
+                        try 
+                        {
+                            //"Position": "202310171805001"
+                            dtTemp = _dbTool.GetDataTable(_BaseDataService.SelectWorkgroupSet(normalTransfer.EquipmentID));
+
+                            if (dtTemp.Rows.Count > 0)
+                            {
+                                eqp_priority = dtTemp.Rows[0]["prio"] is null ? 20 : dtTemp.Rows[0]["prio"].ToString().Equals("0") ? 20 : int.Parse(dtTemp.Rows[0]["prio"].ToString());
+                            }
+                            else
+                            {
+                                eqp_priority = 30;
+                            }
+                            
+                            _logger.Debug(string.Format("Get Equip[{0}] Workgroup priority is [{1}].", normalTransfer.EquipmentID, eqp_priority));
+                        } 
+                        catch(Exception ex) 
+                        {
+                            eqp_priority = 30;
+                            _logger.Debug(string.Format("Exception: Equip[{0}], Message:[{1}].", normalTransfer.EquipmentID, ex.Message));
+                        }
+
+                        workinProcessSch.Priority = _Workgroup_priority.Equals(0) ? eqp_priority : _Workgroup_priority;             //預設優先權為10
+
                         if (single)
                             workinProcessSch.Replace = 0;
                         else
-                            workinProcessSch.Replace = normalTransfer.Transfer.Count > 0 ? normalTransfer.Transfer.Count - 1 : 0;
+                        {
+                            if (_portModel.Equals("2I2OT1"))
+                            {
+                                string tmpLoad = "";
+                                string tmpUnload = "";
+                                //workinProcessSch.Replace = normalTransfer.Transfer.Count > 1 ? normalTransfer.Transfer.Count - 1 : 1;
+                                foreach (TransferList trans in normalTransfer.Transfer)
+                                {
+                                    if (trans.CommandType.Equals("LOAD"))
+                                    {
+                                        tmpLoad = trans.Dest;
+                                    }
+                                    else if (trans.CommandType.Equals("UNLOAD"))
+                                    {
+                                        tmpUnload = trans.Source;
+                                    }
 
+                                    if(tmpLoad.Equals(tmpUnload))
+                                    {
+                                        lstEquips.Add(tmpLoad);
+                                        tmpLoad = "";
+                                        tmpUnload = "";
+                                    }
+
+                                }
+
+                                //workinProcessSch.Replace = 0;
+                                //single = true;
+                            }
+                            else
+                            {
+                                string tmpLoad = "";
+                                string tmpUnload = "";
+                                foreach (TransferList trans in normalTransfer.Transfer)
+                                {
+                                    if (trans.CommandType.Equals("LOAD"))
+                                    {
+                                        tmpLoad = trans.Dest;
+                                    }
+                                    else if (trans.CommandType.Equals("UNLOAD"))
+                                    {
+                                        tmpUnload = trans.Source;
+                                    }
+
+                                    if (tmpLoad.Equals(tmpUnload))
+                                    {
+                                        lstEquips.Add(tmpLoad);
+                                        tmpLoad = "";
+                                        tmpUnload = "";
+                                    }
+                                }
+                            }
+                        }
+
+                        bool isLoad = false;
+                        bool isSwap = false;
+                        string _lastDest = "";
+                        int idxTrans = 0;
+                        DateTime dtStart = DateTime.Now;
                         foreach (TransferList trans in normalTransfer.Transfer)
                         {
+                            //workinProcessSch.UUID = "";
                             //檢查Dest是否已存在於WorkinprocessSch裡, 存在不能再送, 
                             dtExist = new DataTable();
+                            tmpMsg = "";
+                            _oLastWaferTime = new EQPLastWaferTime();
+
 
                             if (trans.CommandType.Equals("LOAD"))
                             {
-                                dtExist = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(trans.Dest));
+                                isLoad = true;
+
+                                if (lstEquips.Exists(e => e.EndsWith(trans.Dest)))
+                                {
+                                    workinProcessSch.Replace = 1;
+                                    isSwap = true;
+                                }
+
+                                _lastDest = trans.Dest;
+
+                                dtExist = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByPortId(trans.Dest, tableOrder));
                                 if (dtExist.Rows.Count > 0)
                                 {
-                                    logger.Debug(string.Format("Dublicate Command Type:[{0}], Command Source: {1}, Dest: {2}", trans.CommandType, trans.Source, trans.Dest));
+                                    logger.Debug(string.Format("Duplicate Command Type:[{0}], Command Source: {1}, Dest: {2}", trans.CommandType, trans.Source, trans.Dest));
                                     continue;   //目的地已有Carrier, 跳過
                                 }
                                 tmpCarrierid = trans.CarrierID.Equals("") ? "*" : trans.CarrierID;
 
                                 //check carrier
-                                dtExist = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(tmpCarrierid));
+                                dtExist = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(tmpCarrierid, tableOrder));
                                 if (dtExist.Rows.Count > 0)
                                 {
-                                    logger.Debug(string.Format("Dublicate Carrier [{0}], command [{1}] been auto cancel.", tmpCarrierid, normalTransfer.CommandID));
+                                    logger.Debug(string.Format("Duplicate Carrier [{0}], command [{1}] been auto cancel.", tmpCarrierid, normalTransfer.CommandID));
                                     if (dtExist.Rows[0]["cmd_state"].ToString().Equals("Init"))
                                     {
                                         //UpdateTableReserveCarrier
@@ -4053,28 +6607,116 @@ namespace RTDWebAPI.Service
                                     if (dtExist.Rows[0]["cmd_state"].ToString().Equals("Initial"))
                                     {
                                         //DeleteWorkInProcessSchByCmdId
-                                        _dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(dtExist.Rows[0]["cmd_id"].ToString()), out tmpMsg, true);
+                                        _dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(dtExist.Rows[0]["cmd_id"].ToString(), tableOrder), out tmpMsg, true);
+                                        logger.Debug(string.Format("Delete old command[{0}] cause have a new command for device[{2}].", dtExist.Rows[0]["cmd_id"].ToString(), trans.Dest));
+                                    }
+                                    if (dtExist.Rows[0]["cmd_state"].ToString().Equals("Running"))
+                                    {
+                                        //The Carrier state is running. cann't create new commands
+                                        continue;   //目的地已有Carrier, 跳過
+                                    }
+                                    else
+                                    {
+                                        continue;
                                     }
                                 }
                             }
                             if (trans.CommandType.Equals("UNLOAD"))
                             {
-                                dtExist = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(trans.Source));
+                                isLoad = false;
+
+                                tmpCarrierid = trans.CarrierID.Equals("") ? "*" : trans.CarrierID;
+
+                                if (lstEquips.Exists(e => e.EndsWith(trans.Source)))
+                                {
+                                    workinProcessSch.Replace = 1;
+                                    isSwap = true;
+                                }
+
+                                /** 如果Command Type is Unload, Carrier ID is *, 暫停3秒, 防止重複產生Unload 指令*/
+                                if (tmpCarrierid.Equals("*"))
+                                    System.Threading.Thread.Sleep(3000);
+
+                                dtExist = _dbTool.GetDataTable(_BaseDataService.QueryWorkInProcessSchByPortIdForUnload(trans.Source, tableOrder));
                                 if (dtExist.Rows.Count > 0)
                                 {
-                                    logger.Debug(string.Format("Dublicate Command Type:[{0}], Command Source: {1}, Dest: {2}", trans.CommandType, trans.Source, trans.Dest));
+                                    logger.Debug(string.Format("Duplicate Command Type:[{0}], Command Source: {1}, Dest: {2}", trans.CommandType, trans.Source, trans.Dest));
                                     continue;   //目的地已有Carrier, 跳過
                                 }
-                                tmpCarrierid = "*";
+
+                                dtTemp2 = _dbTool.GetDataTable(_BaseDataService.QueryCarrierOnPort(trans.Source));
+                                if (dtTemp2.Rows.Count > 0)
+                                {
+                                    tmpCarrierid = dtTemp2.Rows[0]["carrier_id"] is null ? "*" : dtTemp2.Rows[0]["carrier_id"].ToString();
+                                }
+
+                                if (iPortState.Equals(5))
+                                {
+                                    //如果是Reject, 且在設備異常表裡不存在, 加入一筆記錄
+                                    //
+                                }
+                            }
+                            //Pre-Transfer
+                            if (trans.CommandType.ToUpper().Equals("PRE-TRANSFER"))
+                            {
+                                workinProcessSch.Priority = 20;
                             }
 
-                            if (single)
-                                workinProcessSch.Cmd_Id = Tools.GetCommandID(_dbTool);
+                            workinProcessSch.Cmd_Type = trans.CommandType.Equals("") ? "TRANS" : trans.CommandType;
+
+
+                            if (_portModel.Equals("2I2OT1"))
+                            {
+                                if (isLoad)
+                                {
+                                    if (isSwap)
+                                        workinProcessSch.Cmd_Id = "";
+                                }
+                                else
+                                {
+                                    if (isSwap)
+                                    {
+                                        //workinProcessSch.Cmd_Id = "";
+                                        workinProcessSch.UUID = Tools.GetUnitID(_dbTool);
+                                    }
+                                    //workinProcessSch.Cmd_Id = Tools.GetCommandID(_dbTool);
+                                }
+                            }
+                            else
+                            {
+                                if (isSwap)
+                                {
+
+                                    //20240606 DS swap command loadport 1/loadport 2 command id diff
+                                    if (trans.CommandType.Equals("LOAD"))
+                                    {
+                                        if (idxTrans <= 0)
+                                        {
+                                            workinProcessSch.Cmd_Id = "";
+                                        }
+                                        if (idxTrans > 1)
+                                        {
+                                            workinProcessSch.Cmd_Id = "";
+                                        }
+                                        idxTrans++;
+                                    }
+                                    workinProcessSch.UUID = "";
+                                    if (trans.CommandType.Equals("UNLOAD"))
+                                        idxTrans++;
+                                }
+                                else
+                                {
+                                    workinProcessSch.Cmd_Id = "";
+                                    workinProcessSch.UUID = "";
+                                }
+                            }
+                            
+                            //workinProcessSch.Cmd_Id = string.Format("{0}-{1}", Tools.GetCommandID(_dbTool), trans.CommandType);
 
                             tmpMsg = "";
                             //workinProcessSch.UUID = Tools.GetUnitID(_dbTool);  //變更為GID使用, 可查詢同一批派出的指令
-                            workinProcessSch.Cmd_Type = trans.CommandType.Equals("") ? "TRANS" : trans.CommandType;
-                            workinProcessSch.CarrierId = tmpCarrierid;
+                            
+                            workinProcessSch.CarrierId = tmpCarrierid.Equals("") ? "*" : tmpCarrierid;
                             workinProcessSch.CarrierType = trans.CarrierType.Equals("") ? "" : trans.CarrierType;
                             workinProcessSch.Source = trans.Source.Equals("*") ? "*" : trans.Source;
                             workinProcessSch.Dest = trans.Dest.Equals("") ? "*" : trans.Dest;
@@ -4083,21 +6725,72 @@ namespace RTDWebAPI.Service
                             workinProcessSch.IsLastLot = trans.IsLastLot;
                             workinProcessSch.Back = "*";
 
+                            if (workinProcessSch.Cmd_Id.Equals(""))
+                                dtStart = DateTime.Now;
+
+                            if (trans.CommandState.Equals("NearComp"))
+                            {
+                                _oLastWaferTime = new EQPLastWaferTime();
+                                workinProcessSch.Cmd_Current_State = trans.CommandState is null ? "" : trans.CommandState;
+
+                                //取得機台的時間
+                                int iHours = 0;
+                                int iMinutes = 0;
+
+                                //iHours = 1;
+                                //iMinutes = 32;
+                                //EQPLastWaferTime
+                                //_oLastWaferTime
+                                _oLastWaferTime = GetLastWaferTimeByEQP(_dbTool, configuration, _logger, _oLastWaferTime);
+
+
+                                workinProcessSch.Start_Dt = dtStart.AddHours(_oLastWaferTime.Hours).AddMinutes(_oLastWaferTime.Minutes);
+                            }
+                            else
+                            {
+                                workinProcessSch.Cmd_Current_State = "";
+                                workinProcessSch.Start_Dt = dtStart;
+                            }
+
                             DataTable dtInfo = new DataTable { };
                             if (trans.CarrierID is not null)
                             {
                                 if (!trans.CarrierID.Equals("*") || trans.CarrierID.Trim().Equals(""))
                                     dtInfo = _dbTool.GetDataTable(_BaseDataService.QueryLotInfoByCarrierID(trans.CarrierID));
                             }
-                            workinProcessSch.LotID = dtInfo.Rows.Count <= 0 ? " " : dtInfo.Rows[0]["lotid"].ToString();
-                            workinProcessSch.Customer = dtInfo.Rows.Count <= 0 ? " " : dtInfo.Rows[0]["customername"].ToString();
+
+                            if (dtInfo is not null)
+                            {
+                                workinProcessSch.LotID = dtInfo.Rows.Count <= 0 ? " " : dtInfo.Rows[0]["lotid"].ToString();
+                                workinProcessSch.Customer = dtInfo.Rows.Count <= 0 ? " " : dtInfo.Rows[0]["customername"].ToString();
+                            }
+                            else
+                            {
+                                workinProcessSch.LotID = " ";
+                                workinProcessSch.Customer = " ";
+                            }
 
                             if (_DebugMode)
                             {
                                 _logger.Debug(string.Format("----do insert "));
                             }
 
-                            sql = _BaseDataService.InsertTableWorkinprocess_Sch(workinProcessSch);
+                            if (workinProcessSch.Cmd_Id.Equals(""))
+                                workinProcessSch.Cmd_Id = Tools.GetCommandID(_dbTool);
+                            //else
+                            //{
+                                //if (trans.CommandType.Equals("LOAD"))
+                                //{
+                                    //20240605 DS swap command loadport 1/loadport 2 command id 
+                                //    if (!_lastDest.Equals(workinProcessSch.Dest))
+                                //        workinProcessSch.Cmd_Id = Tools.GetCommandID(_dbTool);
+                                //}
+                            //}
+
+                            if (workinProcessSch.UUID.Equals(""))
+                                workinProcessSch.UUID = Tools.GetUnitID(_dbTool);
+
+                            sql = _BaseDataService.InsertTableWorkinprocess_Sch(workinProcessSch, tableOrder);
 
                             if (_DebugMode)
                             {
@@ -4105,7 +6798,39 @@ namespace RTDWebAPI.Service
                             }
 
                             if (_dbTool.SQLExec(sql, out tmpMsg, true))
-                            { }
+                            {
+                                if (tmpMsg.Equals(""))
+                                {
+                                    string _portID = "";
+                                    if (workinProcessSch.Cmd_Type.Equals("LOAD"))
+                                        _portID = workinProcessSch.Dest;
+                                    if (workinProcessSch.Cmd_Type.Equals("UNLOAD"))
+                                        _portID = workinProcessSch.Source;
+
+                                    if(!_portID.Equals(""))
+                                        _dbTool.SQLExec(_BaseDataService.LockEquipPortByPortId(_portID, true), out tmpMsg, true);
+
+                                    if (tmpMsg.Equals(""))
+                                    {
+                                        _logger.Debug(string.Format("----Port [{0}] has been Lock.", _portID));
+                                    }
+                                    else
+                                        _logger.Debug(string.Format("----Port [{0}] lock faile. Message:[{1}]", _portID, tmpMsg));
+                                }
+                            }
+
+                            if (!tmpMsg.Equals(""))
+                            {
+                                _logger.Debug(string.Format("--Error. Insert Workinprocess_Sch error. [command ID {0}, command Type {1}, source {2}, error:{3}].", workinProcessSch.Cmd_Id, workinProcessSch.Cmd_Type, workinProcessSch.Source, tmpMsg));
+                            }
+
+                            normalTransfer.CommandID = workinProcessSch.Cmd_Id;
+
+                            if (!isSwap)
+                            {
+                                workinProcessSch.Cmd_Id = "";
+                                workinProcessSch.UUID = "";
+                            }
                         }
 
                         _arrayOfCmds.Add(normalTransfer.CommandID);
@@ -4133,14 +6858,24 @@ namespace RTDWebAPI.Service
 
             return result;
         }
-        public bool CreateTransferCommandByTransferList(DBTool _dbTool, ILogger _logger, TransferList _transferList, out List<string> _arrayOfCmds)
+        public bool CreateTransferCommandByTransferList(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, TransferList _transferList, out List<string> _arrayOfCmds)
         {
             bool result = false;
             string tmpMsg = "";
             _arrayOfCmds = new List<string>();
             DataTable dtTemp = new DataTable();
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+            string _keyCmd = "";
+
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
                 string sql = "";
                 string lotID = "";
                 string CarrierID = "";
@@ -4172,21 +6907,29 @@ namespace RTDWebAPI.Service
                 tmpMsg = "";
                 if (normalTransfer.Transfer is not null)
                 {
-                    normalTransfer.CommandID = Tools.GetCommandID(_dbTool);
+                    _keyCmd = Tools.GetCommandID(_dbTool);
+                    if (lstTransfer.CommandType.Equals("MANUAL-DIRECT"))
+                    {
+                        normalTransfer.CommandID = _keyCmd.Insert(12, "M");
+                    }
+                    else
+                    {
+                        normalTransfer.CommandID = _keyCmd.Insert(12, "P");
+                    }
 
                     SchemaWorkInProcessSch workinProcessSch = new SchemaWorkInProcessSch();
                     workinProcessSch.Cmd_Id = normalTransfer.CommandID;
                     workinProcessSch.Cmd_State = "";    //派送前為NULL
                     workinProcessSch.EquipId = normalTransfer.EquipmentID;
                     workinProcessSch.Cmd_Current_State = "";    //派送前為NULL
-                    workinProcessSch.Priority = 10;             //預設優先權為10
+                    workinProcessSch.Priority = 20;             //預設優先權為10
                     workinProcessSch.Replace = normalTransfer.Transfer.Count > 0 ? normalTransfer.Transfer.Count - 1 : 0;
 
                     foreach (TransferList trans in normalTransfer.Transfer)
                     {
                         workinProcessSch.CarrierId = trans.CarrierID.Equals("") ? "*" : trans.CarrierID;
                         if (!workinProcessSch.CarrierId.Equals("*")) {
-                            dtTemp = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(trans.CarrierID));
+                            dtTemp = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByCarrier(trans.CarrierID, tableOrder));
 
                             if (dtTemp.Rows.Count > 0)
                                 continue;
@@ -4208,7 +6951,7 @@ namespace RTDWebAPI.Service
                         workinProcessSch.LotID = dtInfo.Rows.Count <= 0 ? "" : dtInfo.Rows[0]["lotid"].ToString();
                         workinProcessSch.Customer = dtInfo.Rows.Count <= 0 ? "" : dtInfo.Rows[0]["customername"].ToString();
 
-                        sql = _BaseDataService.InsertTableWorkinprocess_Sch(workinProcessSch);
+                        sql = _BaseDataService.InsertTableWorkinprocess_Sch(workinProcessSch, tableOrder);
                         if (_dbTool.SQLExec(sql, out tmpMsg, true))
                         { }
 
@@ -4226,8 +6969,11 @@ namespace RTDWebAPI.Service
             }
             finally
             {
+                if (dtTemp != null)
+                    dtTemp.Dispose(); 
                 //Do Nothing
             }
+            dtTemp = null;
 
             return result;
         }
@@ -4364,6 +7110,9 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { }
+            
+            dr1 = null;
+            dr2 = null;
 
             return iState;
         }
@@ -4434,17 +7183,67 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { iState = 99; _portDesc = string.Format("Exception:{0}", ex.Message); }
+            
+            dr1 = null;
 
             return iState;
         }
-        public DataTable GetAvailableCarrier(DBTool _dbTool, string _carrierType, bool _isFull)
+        public DataTable GetAvailableCarrier(DBTool _dbTool, string _carrierType, bool _isFull, string _RTDEnv)
         {
             string sql = "";
             DataTable dtAvailableCarrier = null;
 
             try
             {
-                sql = string.Format(_BaseDataService.SelectAvailableCarrierByCarrierType(_carrierType, _isFull));
+                //sql = string.Format(_BaseDataService.SelectAvailableCarrierByCarrierType(_carrierType, _isFull));
+
+                if (_RTDEnv.Equals("PROD"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierByCarrierType(_carrierType, _isFull));
+                else if (_RTDEnv.Equals("UAT"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierForUatByCarrierType(_carrierType, _isFull));
+
+                dtAvailableCarrier = _dbTool.GetDataTable(sql);
+            }
+            catch (Exception ex)
+            { dtAvailableCarrier = null; }
+
+            return dtAvailableCarrier;
+        }
+        public DataTable GetAvailableCarrier2(DBTool _dbTool, string _carrierType, bool _isFull, string _RTDEnv)
+        {
+            string sql = "";
+            DataTable dtAvailableCarrier = null;
+
+            try
+            {
+                //sql = string.Format(_BaseDataService.SelectAvailableCarrierByCarrierType(_carrierType, _isFull));
+
+                if (_RTDEnv.Equals("PROD"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierIncludeEQPByCarrierType(_carrierType, _isFull));
+                else if (_RTDEnv.Equals("UAT"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierForUatByCarrierType(_carrierType, _isFull));
+
+                dtAvailableCarrier = _dbTool.GetDataTable(sql);
+            }
+            catch (Exception ex)
+            { dtAvailableCarrier = null; }
+
+            return dtAvailableCarrier;
+        }
+        public DataTable GetAvailableCarrierFromEQP(DBTool _dbTool, string _portid, string _carrierType, bool _isFull, string _RTDEnv)
+        {
+            string sql = "";
+            DataTable dtAvailableCarrier = null;
+
+            try
+            {
+                //sql = string.Format(_BaseDataService.SelectAvailableCarrierByCarrierType(_carrierType, _isFull));
+
+                if (_RTDEnv.Equals("PROD"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierByEQP(_portid, _carrierType, _isFull));
+                else if (_RTDEnv.Equals("UAT"))
+                    sql = string.Format(_BaseDataService.SelectAvailableCarrierForUatByEQP(_portid, _carrierType, _isFull));
+
                 dtAvailableCarrier = _dbTool.GetDataTable(sql);
             }
             catch (Exception ex)
@@ -4482,7 +7281,7 @@ namespace RTDWebAPI.Service
         public double TimerTool(string unit, string lastDateTime)
         {
             double dbTime = 0;
-            DateTime curDT = DateTime.UtcNow;
+            DateTime curDT = DateTime.Now;
             try
             {
                 DateTime tmpDT = Convert.ToDateTime(lastDateTime);
@@ -4553,7 +7352,7 @@ namespace RTDWebAPI.Service
         {
             int iExecMode = 1;
             string sql = "";
-            DataTable dt;
+            DataTable dt = null;
 
             try
             {
@@ -4567,6 +7366,12 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { dt = null; }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
 
             return iExecMode;
         }
@@ -4574,7 +7379,7 @@ namespace RTDWebAPI.Service
         {
             bool isAvailableLot = false;
             string sql = "";
-            DataTable dt;
+            DataTable dt=null;
 
             try
             {
@@ -4588,6 +7393,12 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { dt = null; }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
 
             return isAvailableLot;
         }
@@ -4662,6 +7473,18 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtCurrentLot != null)
+                    dtCurrentLot.Dispose();
+                if (dtLoadPortCurrentState != null)
+                    dtLoadPortCurrentState.Dispose(); 
+            }
+            dt = null;
+            dtCurrentLot = null;
+            dtLoadPortCurrentState = null;
 
             return bResult;
         }
@@ -4669,7 +7492,7 @@ namespace RTDWebAPI.Service
         {
             bool isLock = false;
             string sql = "";
-            DataTable dt;
+            DataTable dt=null;
 
             try
             {
@@ -4687,6 +7510,12 @@ namespace RTDWebAPI.Service
             }
             catch (Exception ex)
             { dt = null; }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+            dt = null;
 
             return isLock;
         }
@@ -4780,8 +7609,8 @@ namespace RTDWebAPI.Service
             string tmpSql = "";
             string tmpMsg = "";
             tmpMessage = "";
-            DataTable dt;
-            DataTable dt2;
+            DataTable dt = null;
+            DataTable dt2 = null;
 
             try
             {
@@ -4827,6 +7656,15 @@ namespace RTDWebAPI.Service
             {
 
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+            }
+            dt = null;
+            dt2 = null;
 
             return bResult;
         }
@@ -4837,9 +7675,9 @@ namespace RTDWebAPI.Service
             string tmpSql = "";
             string tmpMsg = "";
             tmpMessage = "";
-            DataTable dt;
-            DataTable dt2;
-            DataTable dtTemp;
+            DataTable dt = null;
+            DataTable dt2 = null;
+            DataTable dtTemp = null;
             List<string> args = new();
             APIResult apiResult = new APIResult();
             string _table = "";
@@ -4855,7 +7693,10 @@ namespace RTDWebAPI.Service
                 if (dt.Rows.Count > 0)
                 {
                     string lotid;
+                    string _tmplotid = "";
                     string carrierId;
+                    string _quantity;
+                    string _totalQty;
                     foreach (DataRow dr in dt.Rows)
                     {
                         args = new();
@@ -4863,7 +7704,26 @@ namespace RTDWebAPI.Service
                         carrierId = "";
 
                         lotid = dr["LOT_ID"].ToString().Equals("") ? "" : dr["LOT_ID"].ToString();
+                        if(lotid.Contains("R") || lotid.Contains("S") )
+                            _tmplotid = lotid.Replace("R", "").Replace("S", "");
+                        else
+                            _tmplotid = lotid;
+
                         carrierId = dr["carrier_id"].ToString().Equals("") ? "" : dr["carrier_id"].ToString();
+
+                        sql = _BaseDataService.QueryLotInfoByCarrierID(carrierId);
+                        dt2 = _dbTool.GetDataTable(sql);
+
+                        if (dt2.Rows.Count > 0)
+                        {
+                            _quantity = dt2.Rows[0]["quantity"].ToString().Equals("") ? "0" : dt2.Rows[0]["quantity"].ToString().Trim();
+                            _totalQty = dt2.Rows[0]["total_qty"].ToString().Equals("") ? "0" : dt2.Rows[0]["total_qty"].ToString().Trim(); ;
+                        }
+                        else
+                        {
+                            _quantity = "0";
+                            _totalQty = "0";
+                        }
 
                         if (dr["location_type"].ToString().Trim().Equals("ERACK"))
                         {
@@ -4871,7 +7731,7 @@ namespace RTDWebAPI.Service
                             if (carrierId.Length > 0)
                             {
                                 tmpMsg = string.Format("[AutoSentInfoUpdate: Flag LotId {0}]", lotid);
-                                _logger.Debug(tmpMsg);
+                                _logger.Info(tmpMsg);
 
                                 string v_STAGE = "";
                                 string v_CUSTOMERNAME = "";
@@ -4882,14 +7742,27 @@ namespace RTDWebAPI.Service
                                 string v_HOLDCODE = "";
                                 string v_TURNRATIO = "0";
                                 string v_EOTD = "";
+                                string v_HOLDREAS = "";
                                 string v_POTD = "";
+                                string v_WAFERLOT = "";
+                                string v_Quantity = _quantity;
+                                string v_TotalQty = _totalQty;
                                 try
                                 {
-                                    v_CUSTOMERNAME = dr["CUSTOMERNAME"].ToString().Equals("") ? "" : dr["CUSTOMERNAME"].ToString();
-                                    v_PARTID = dr["PARTID"].ToString().Equals("") ? "" : dr["PARTID"].ToString();
-                                    v_LOTTYPE = dr["LOTTYPE"].ToString().Equals("") ? "" : dr["LOTTYPE"].ToString();
+                                    if (v_CUSTOMERNAME.Equals(""))
+                                    {
+                                        sql = _BaseDataService.SelectTableLotInfoByLotid(_tmplotid);
+                                        dt2 = _dbTool.GetDataTable(sql);
 
-                                    sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], lotid);
+                                        if (dt2.Rows.Count > 0)
+                                        {
+                                            v_CUSTOMERNAME = dt2.Rows[0]["CUSTOMERNAME"].ToString().Equals("") ? "" : dt2.Rows[0]["CUSTOMERNAME"].ToString();
+                                            v_PARTID = dt2.Rows[0]["PARTID"].ToString().Equals("") ? "" : dt2.Rows[0]["PARTID"].ToString();
+                                            v_LOTTYPE = dt2.Rows[0]["LOTTYPE"].ToString().Equals("") ? "" : dt2.Rows[0]["LOTTYPE"].ToString();
+                                        }
+                                    }
+
+                                    sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], _tmplotid);
                                     dtTemp = _dbTool.GetDataTable(sql);
 
                                     if (dtTemp.Rows.Count > 0)
@@ -4901,6 +7774,17 @@ namespace RTDWebAPI.Service
                                         v_TURNRATIO = dtTemp.Rows[0]["TURNRATIO"].ToString().Equals("") ? "0" : dtTemp.Rows[0]["TURNRATIO"].ToString();
                                         v_EOTD = dtTemp.Rows[0]["EOTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["EOTD"].ToString();
                                         v_POTD = dtTemp.Rows[0]["POTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["POTD"].ToString();
+                                        v_HOLDREAS = dtTemp.Rows[0]["HoldReas"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HoldReas"].ToString();
+                                        v_WAFERLOT = dtTemp.Rows[0]["waferlotid"].ToString().Equals("") ? "" : dtTemp.Rows[0]["waferlotid"].ToString();
+
+                                        sql = _BaseDataService.CheckDuplicatelot(_tmplotid);
+                                        dt2 = _dbTool.GetDataTable(sql);
+
+                                        if (dt2.Rows.Count > 0)
+                                        {
+                                            if (int.Parse(dt2.Rows[0]["LOTCOUNT"].ToString()) > 1)
+                                                v_HOLDREAS = "duplicate";
+                                        }
                                     }
                                 }
                                 catch (Exception ex)
@@ -4909,41 +7793,66 @@ namespace RTDWebAPI.Service
                                     _logger.Debug(tmpMsg);
                                 }
 
-                                args.Add(lotid);
-                                args.Add(v_STAGE.Equals("") ? dr["STAGE"].ToString() : v_STAGE);
-                                args.Add("");//("machine");
-                                args.Add("");//("desc");
-                                args.Add(carrierId);
-                                args.Add(v_CUSTOMERNAME);
-                                args.Add(v_PARTID);//("PartID");
-                                args.Add(v_LOTTYPE);//("LotType");
-                                args.Add(v_AUTOMOTIVE);//("Automotive");
-                                args.Add(v_STATE);//("State");
-                                args.Add(v_HOLDCODE);//("HoldCode");
-                                args.Add(v_TURNRATIO);//("TURNRATIO");
-                                args.Add(v_EOTD);//("EOTD");
-                                apiResult = SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", args);
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add(lotid);
+                                    args.Add(v_STAGE.Equals("") ? dr["STAGE"].ToString() : v_STAGE);
+                                    args.Add("");//("machine");
+                                    args.Add("");//("desc");
+                                    args.Add(carrierId);
+                                    args.Add(v_CUSTOMERNAME);
+                                    args.Add(v_PARTID);//("PartID");
+                                    args.Add(v_LOTTYPE);//("LotType");
+                                    args.Add(v_AUTOMOTIVE);//("Automotive");
+                                    args.Add(v_STATE);//("State");
+                                    args.Add(v_HOLDCODE);//("HoldCode");
+                                    args.Add(v_TURNRATIO);//("TURNRATIO");
+                                    args.Add(v_EOTD);//("EOTD");
+                                    args.Add(v_HOLDREAS);//("EOTD");
+                                    args.Add(v_POTD);//("EOTD");
+                                    args.Add(v_WAFERLOT);//("EOTD");
+                                    args.Add(v_Quantity);//("Quantity");
+                                    args.Add(v_TotalQty);//("TotalQty");
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "CarrierLocationUpdate", "InfoUpdate", carrierId));
+                                }
                             }
                             else
                             {
                                 tmpMsg = string.Format("[CarrierLocationUpdate: Carrier [{0}] Not Exist.]", carrierId);
                                 _logger.Debug(tmpMsg);
 
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                apiResult = SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", args);
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "CarrierLocationUpdate", "InfoUpdate", carrierId));
+                                }
                             }
+                            Thread.Sleep(300);
                         }
                     }
                 }
@@ -4952,6 +7861,230 @@ namespace RTDWebAPI.Service
             {
 
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose(); 
+            }
+            dt = null;
+            dt2 = null;
+            dtTemp = null;
+
+            return bResult;
+        }
+        public bool AutoSentInfoUpdateForSTK(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage)
+        {
+            bool bResult = false;
+            string sql = "";
+            string tmpSql = "";
+            string tmpMsg = "";
+            tmpMessage = "";
+            DataTable dt = null;
+            DataTable dt2 = null;
+            DataTable dtTemp = null;
+            List<string> args = new();
+            APIResult apiResult = new APIResult();
+            string _table = "";
+
+            try
+            {
+                //_args.Split(',')
+                _table = _configuration["eRackDisplayInfo:contained"].ToString().Split(',')[1];
+
+                sql = _BaseDataService.QueryCarrierAssociateWhenOnErack(_table);
+                dt = _dbTool.GetDataTable(sql);
+
+                if (dt.Rows.Count > 0)
+                {
+                    string lotid;
+                    string _tmplotid = "";
+                    string carrierId;
+                    string _quantity = "";
+                    string _totalQty;
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        args = new();
+                        apiResult = new APIResult();
+                        carrierId = "";
+
+                        lotid = dr["LOT_ID"].ToString().Equals("") ? "" : dr["LOT_ID"].ToString();
+                        if (lotid.Contains("R") || lotid.Contains("S"))
+                            _tmplotid = lotid.Replace("R", "").Replace("S", "");
+                        else
+                            _tmplotid = lotid;
+
+                        carrierId = dr["carrier_id"].ToString().Equals("") ? "" : dr["carrier_id"].ToString();
+
+                        sql = _BaseDataService.QueryLotInfoByCarrierID(carrierId);
+                        dt2 = _dbTool.GetDataTable(sql);
+
+                        if (dt2.Rows.Count > 0)
+                        {
+                            _quantity = dt2.Rows[0]["quantity"].ToString().Equals("") ? "0" : dt2.Rows[0]["quantity"].ToString().Trim();
+                            _totalQty = dt2.Rows[0]["total_qty"].ToString().Equals("") ? "0" : dt2.Rows[0]["total_qty"].ToString().Trim(); ;
+                        }
+                        else
+                        {
+                            _quantity = "0";
+                            _totalQty = "0";
+                        }
+
+                        if (dr["location_type"].ToString().Trim().Equals("STK"))
+                        {
+
+                            if (carrierId.Length > 0)
+                            {
+                                tmpMsg = string.Format("[AutoSentInfoUpdate: Flag LotId {0}]", lotid);
+                                _logger.Info(tmpMsg);
+
+                                string v_STAGE = "";
+                                string v_CUSTOMERNAME = "";
+                                string v_PARTID = "";
+                                string v_LOTTYPE = "";
+                                string v_AUTOMOTIVE = "";
+                                string v_STATE = "";
+                                string v_HOLDCODE = "";
+                                string v_TURNRATIO = "0";
+                                string v_EOTD = "";
+                                string v_HOLDREAS = "";
+                                string v_POTD = "";
+                                string v_WAFERLOT = "";
+                                string v_Quantity = _quantity;
+                                string v_TotalQty = _totalQty;
+                                try
+                                {
+                                    v_CUSTOMERNAME = dr["CUSTOMERNAME"].ToString().Equals("") ? "" : dr["CUSTOMERNAME"].ToString();
+                                    v_PARTID = dr["PARTID"].ToString().Equals("") ? "" : dr["PARTID"].ToString();
+                                    v_LOTTYPE = dr["LOTTYPE"].ToString().Equals("") ? "" : dr["LOTTYPE"].ToString();
+
+                                    sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], _tmplotid);
+                                    dtTemp = _dbTool.GetDataTable(sql);
+
+                                    if (dtTemp.Rows.Count > 0)
+                                    {
+                                        if (v_CUSTOMERNAME.Equals(""))
+                                        {
+                                            sql = _BaseDataService.SelectTableLotInfoByLotid(_tmplotid);
+                                            dt2 = _dbTool.GetDataTable(sql);
+
+                                            if (dt2.Rows.Count > 0)
+                                            {
+                                                v_CUSTOMERNAME = dt2.Rows[0]["CUSTOMERNAME"].ToString().Equals("") ? "" : dt2.Rows[0]["CUSTOMERNAME"].ToString();
+                                                v_PARTID = dt2.Rows[0]["PARTID"].ToString().Equals("") ? "" : dt2.Rows[0]["PARTID"].ToString();
+                                                v_LOTTYPE = dt2.Rows[0]["LOTTYPE"].ToString().Equals("") ? "" : dt2.Rows[0]["LOTTYPE"].ToString();
+                                            }
+                                        }
+
+                                        v_STAGE = dtTemp.Rows[0]["STAGE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["STAGE"].ToString();
+                                        v_AUTOMOTIVE = dtTemp.Rows[0]["AUTOMOTIVE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["AUTOMOTIVE"].ToString();
+                                        v_STATE = dtTemp.Rows[0]["STATE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["STATE"].ToString();
+                                        v_HOLDCODE = dtTemp.Rows[0]["HOLDCODE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HOLDCODE"].ToString();
+                                        v_TURNRATIO = dtTemp.Rows[0]["TURNRATIO"].ToString().Equals("") ? "0" : dtTemp.Rows[0]["TURNRATIO"].ToString();
+                                        v_EOTD = dtTemp.Rows[0]["EOTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["EOTD"].ToString();
+                                        v_POTD = dtTemp.Rows[0]["POTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["POTD"].ToString();
+                                        v_HOLDREAS = dtTemp.Rows[0]["HoldReas"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HoldReas"].ToString();
+                                        v_WAFERLOT = dtTemp.Rows[0]["waferlotid"].ToString().Equals("") ? "" : dtTemp.Rows[0]["waferlotid"].ToString();
+
+                                        sql = _BaseDataService.CheckDuplicatelot(_tmplotid);
+                                        dt2 = _dbTool.GetDataTable(sql);
+
+                                        if (dt2.Rows.Count > 0)
+                                        {
+                                            if (int.Parse(dt2.Rows[0]["LOTCOUNT"].ToString()) > 1)
+                                                v_HOLDREAS = "duplicate";
+                                        }
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    tmpMsg = string.Format("[AutoSentInfoUpdate: Column Issue. {0}]", ex.Message);
+                                    _logger.Debug(tmpMsg);
+                                }
+
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add(lotid);
+                                    args.Add(v_STAGE.Equals("") ? dr["STAGE"].ToString() : v_STAGE);
+                                    args.Add("");//("machine");
+                                    args.Add("");//("desc");
+                                    args.Add(carrierId);
+                                    args.Add(v_CUSTOMERNAME);
+                                    args.Add(v_PARTID);//("PartID");
+                                    args.Add(v_LOTTYPE);//("LotType");
+                                    args.Add(v_AUTOMOTIVE);//("Automotive");
+                                    args.Add(v_STATE);//("State");
+                                    args.Add(v_HOLDCODE);//("HoldCode");
+                                    args.Add(v_TURNRATIO);//("TURNRATIO");
+                                    args.Add(v_EOTD);//("EOTD");
+                                    args.Add(v_HOLDREAS);//("EOTD");
+                                    args.Add(v_POTD);//("EOTD");
+                                    args.Add(v_WAFERLOT);//("EOTD");
+                                    args.Add(v_Quantity);//("Quantity");
+                                    args.Add(v_TotalQty);//("TotalQty");
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "AutoSentInfoUpdate", "InfoUpdate", carrierId));
+                                }
+                            }
+                            else
+                            {
+                                tmpMsg = string.Format("[CarrierLocationUpdate: Carrier [{0}] Not Exist.]", carrierId);
+                                _logger.Debug(tmpMsg);
+
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");//Quantity
+                                    args.Add("");//TotalQty
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "AutoSentInfoUpdate", "InfoUpdate", carrierId));
+                                }                                
+                            }
+                            Thread.Sleep(300);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+
+            }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+            }
+            dt = null;
+            dt2 = null;
+            dtTemp = null;
 
             return bResult;
         }
@@ -4962,9 +8095,9 @@ namespace RTDWebAPI.Service
             string tmpSql = "";
             string tmpMsg = "";
             tmpMessage = "";
-            DataTable dt;
-            DataTable dt2;
-            DataTable dtTemp;
+            DataTable dt = null;
+            DataTable dt2 = null;
+            DataTable dtTemp = null;
             List<string> args = new();
             APIResult apiResult = new APIResult();
 
@@ -4976,7 +8109,10 @@ namespace RTDWebAPI.Service
                 if (dt.Rows.Count > 0)
                 {
                     string lotid;
+                    string _tmpLot;
                     string carrierId;
+                    string _quantity;
+                    string _totalQty;
                     foreach (DataRow dr in dt.Rows)
                     {
                         args = new();
@@ -4986,13 +8122,32 @@ namespace RTDWebAPI.Service
                         lotid = dr["LOT_ID"].ToString().Equals("") ? "" : dr["LOT_ID"].ToString();
                         carrierId = dr["carrier_id"].ToString().Equals("") ? "" : dr["carrier_id"].ToString();
 
-                        if (dr["location_type"].ToString().Trim().Equals("ERACK") || dr["location_type"].ToString().Trim().Equals("A"))
+                        sql = _BaseDataService.QueryLotInfoByCarrierID(carrierId);
+                        dt2 = _dbTool.GetDataTable(sql);
+
+                        if (dt2.Rows.Count > 0)
+                        {
+                            _quantity = dt2.Rows[0]["quantity"].ToString().Equals("") ? "0" : dt2.Rows[0]["quantity"].ToString().Trim();
+                            _totalQty = dt2.Rows[0]["total_qty"].ToString().Equals("") ? "0" : dt2.Rows[0]["total_qty"].ToString().Trim(); ;
+                        }
+                        else
+                        {
+                            _quantity = "0";
+                            _totalQty = "0";
+                        }
+
+                        if (lotid.Contains("R") || lotid.Contains("S"))
+                            _tmpLot = lotid.Replace("R", "").Replace("S", "");
+                        else
+                            _tmpLot = lotid;
+
+                        if (dr["location_type"].ToString().Trim().Equals("ERACK") || dr["location_type"].ToString().Trim().Equals("A") || dr["location_type"].ToString().Trim().Equals("STK"))
                         {
 
                             if (carrierId.Length > 0)
                             {
-                                tmpMsg = string.Format("[AutoSentInfoUpdate: Flag LotId {0}]", lotid);
-                                _logger.Debug(tmpMsg);
+                                tmpMsg = string.Format("[AutoSentInfoUpdate: Flag LotId {0}]", _tmpLot);
+                                _logger.Info(tmpMsg);
 
                                 string v_STAGE = "";
                                 string v_CUSTOMERNAME = "";
@@ -5003,14 +8158,18 @@ namespace RTDWebAPI.Service
                                 string v_HOLDCODE = "";
                                 string v_TURNRATIO = "0";
                                 string v_EOTD = "";
+                                string v_HOLDREAS = "";
                                 string v_POTD = "";
+                                string v_WAFERLOT = "";
+                                string v_Quantity = _quantity;
+                                string v_totalQty = _totalQty;
                                 try
                                 {
                                     v_CUSTOMERNAME = dr["CUSTOMERNAME"].ToString().Equals("") ? "" : dr["CUSTOMERNAME"].ToString();
                                     v_PARTID = dr["PARTID"].ToString().Equals("") ? "" : dr["PARTID"].ToString();
                                     v_LOTTYPE = dr["LOTTYPE"].ToString().Equals("") ? "" : dr["LOTTYPE"].ToString();
 
-                                    sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], lotid);
+                                    sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], _tmpLot);
                                     dtTemp = _dbTool.GetDataTable(sql);
 
                                     if (dtTemp.Rows.Count > 0)
@@ -5022,6 +8181,8 @@ namespace RTDWebAPI.Service
                                         v_TURNRATIO = dtTemp.Rows[0]["TURNRATIO"].ToString().Equals("") ? "0" : dtTemp.Rows[0]["TURNRATIO"].ToString();
                                         v_EOTD = dtTemp.Rows[0]["EOTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["EOTD"].ToString();
                                         v_POTD = dtTemp.Rows[0]["POTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["POTD"].ToString();
+                                        v_HOLDREAS = dtTemp.Rows[0]["HoldReas"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HoldReas"].ToString();
+                                        v_WAFERLOT = dtTemp.Rows[0]["waferlotid"].ToString().Equals("") ? "" : dtTemp.Rows[0]["waferlotid"].ToString();
                                     }
                                 }
                                 catch (Exception ex)
@@ -5030,20 +8191,32 @@ namespace RTDWebAPI.Service
                                     _logger.Debug(tmpMsg);
                                 }
 
-                                args.Add(lotid);
-                                args.Add(v_STAGE.Equals("") ? dr["STAGE"].ToString() : v_STAGE);
-                                args.Add("");//("machine");
-                                args.Add("");//("desc");
-                                args.Add(carrierId);
-                                args.Add(v_CUSTOMERNAME);
-                                args.Add(v_PARTID);//("PartID");
-                                args.Add(v_LOTTYPE);//("LotType");
-                                args.Add(v_AUTOMOTIVE);//("Automotive");
-                                args.Add(v_STATE);//("State");
-                                args.Add(v_HOLDCODE);//("HoldCode");
-                                args.Add(v_TURNRATIO);//("TURNRATIO");
-                                args.Add(v_EOTD);//("EOTD");
-                                apiResult = SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", args);
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add(lotid);
+                                    args.Add(v_STAGE.Equals("") ? dr["STAGE"].ToString() : v_STAGE);
+                                    args.Add("");//("machine");
+                                    args.Add("");//("desc");
+                                    args.Add(carrierId);
+                                    args.Add(v_CUSTOMERNAME);
+                                    args.Add(v_PARTID);//("PartID");
+                                    args.Add(v_LOTTYPE);//("LotType");
+                                    args.Add(v_AUTOMOTIVE);//("Automotive");
+                                    args.Add(v_STATE);//("State");
+                                    args.Add(v_HOLDCODE);//("HoldCode");
+                                    args.Add(v_TURNRATIO);//("TURNRATIO");
+                                    args.Add(v_EOTD);//("EOTD");
+                                    args.Add(v_HOLDREAS);//("EOTD");
+                                    args.Add(v_POTD);//("EOTD");
+                                    args.Add(v_WAFERLOT);//("EOTD");
+                                    args.Add(v_Quantity);//("Quantity");
+                                    args.Add(v_totalQty);//("totalQty");
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "AutoBindAndSentInfoUpdate", "InfoUpdate", carrierId));
+                                }
 
                                 if (!lotid.Equals(""))
                                 {
@@ -5075,20 +8248,41 @@ namespace RTDWebAPI.Service
                                 tmpMsg = string.Format("[CarrierLocationUpdate: Carrier [{0}] Not Exist.]", carrierId);
                                 _logger.Debug(tmpMsg);
 
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                args.Add("");
-                                apiResult = SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", args);
+                                if (CheckMCSStatus(_dbTool, _logger))
+                                {
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");
+                                    args.Add("");//Quantity
+                                    args.Add("");//TotalQty
+                                    apiResult = SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+                                }
+                                else
+                                {
+                                    _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "AutoBindAndSentInfoUpdate", "InfoUpdate", carrierId));
+                                }
+
+
+                            }
+
+                            //Clean EquipList when Rebind Lot
+                            if (!lotid.Equals(""))
+                            {
+                                sql = _BaseDataService.EQPListReset(lotid);
+                                _dbTool.SQLExec(sql, out tmpMsg, true);
                             }
                         }
                         else if (dr["location_type"].ToString().Trim().Equals("Sync"))
@@ -5124,6 +8318,23 @@ namespace RTDWebAPI.Service
             {
 
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+                args.Clear();
+                if (apiResult != null)
+                    apiResult.Dispose();
+            }
+            dt = null;
+            dt2 = null;
+            dtTemp = null;
+            args = null;
+            apiResult = null;
 
             return bResult;
         }
@@ -5134,8 +8345,8 @@ namespace RTDWebAPI.Service
             string tmpSql = "";
             string tmpMsg = "";
             tmpMessage = "";
-            DataTable dt;
-            DataTable dt2;
+            DataTable dt = null;
+            DataTable dt2 = null;
 
             try
             {
@@ -5181,6 +8392,15 @@ namespace RTDWebAPI.Service
             {
                 bResult = false;
             }
+            finally
+            {
+                if(dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+            }
+            dt = null;
+            dt2 = null;
 
             return bResult;
         }
@@ -5200,6 +8420,7 @@ namespace RTDWebAPI.Service
             string _commandid = "";
             string _params = "";
             string _desc = "";
+            string _eventTrigger = "";
 
             try
             {
@@ -5209,25 +8430,28 @@ namespace RTDWebAPI.Service
                     _commandid = argv is null ? "" : argv[0];
                     _params = argv is null ? "" : argv[1];
                     _desc = argv is null ? "" : argv[2];
+                    _eventTrigger = argv is null ? "" : argv[3];
                 }
 
+                string[] tmpAryay = new string[11];
                 if (ListAlarmCode.Count <= 0)
                 {
                     string[] aryAlarm = {
-                        "10100,System,MCS,Error,Sent Command Failed,0,,{0},{1},{2}",
-                        "10101,System,MCS,Alarm,MCS Connection Failed,0,,{0},{1},{2}",
-                        "20100,System,Database Access,Alarm,Database Access Error,100,AlarmSet,{0},{1},{2}",
-                        "20101,System,Database Access,Alarm,Database Access Success,101,AlarmReset,{0},{1},{2}",
-                        "30000,System,RTD,Issue,Dispatch overtime,1,Auto Clean Commands,{0},{1},{2}",
-                        "30001,System,RTD,Issue,Dispatch overtime,2,Auto Hold Lot,{0},{1},{2}",
-                        "90000,System,RTD,INFO,TESE ALARM,0,,{0},{1},{2}"
+                        "10100,System,MCS,Error,Sent Command Failed,0,,{0},{1},{2},{3}",
+                        "10101,System,MCS,Alarm,MCS Connection Failed,0,,{0},{1},{2},{3}",
+                        "20100,System,Database Access,Alarm,Database Access Error,100,AlarmSet,{0},{1},{2},{3}",
+                        "20101,System,Database Access,Alarm,Database Access Success,101,AlarmReset,{0},{1},{2},{3}",
+                        "30000,System,RTD,Issue,Dispatch overtime,1,Auto Clean Commands,{0},{1},{2},{3}",
+                        "30001,System,RTD,Issue,Dispatch overtime,2,Auto Hold Lot,{0},{1},{2},{3}",
+                        "30100,System,RTD,Alarm,MCS serious issue,1,Auto turn off MCS,{0},{1},{2},{3}",
+                        "90000,System,RTD,INFO,TESE ALARM,0,,{0},{1},{2},{3}"
                     };
 
                     int _iAlarmCode = 0;
                     foreach (string alarm in aryAlarm)
                     {
-                        string[] tmp = alarm.Split(',');
-                        _iAlarmCode = int.Parse(tmp[0]);
+                        tmpAryay = alarm.Split(',');
+                        _iAlarmCode = int.Parse(tmpAryay[0]);
                         lstAlarm.Add(_iAlarmCode, alarm);
                     }
 
@@ -5235,13 +8459,14 @@ namespace RTDWebAPI.Service
                 }
 
                 alarmMsg = ListAlarmCode[_alarmCode];
+                tmpAryay = alarmMsg.Split(',');
 
-                tmpSQL = _BaseDataService.InsertRTDAlarm(alarmMsg);
+                tmpSQL = _BaseDataService.InsertRTDAlarm(tmpAryay);
 
                 if (_commandid.Equals(""))
-                    tmpSQL = string.Format(tmpSQL, _commandid, _params, _desc);
+                    tmpSQL = string.Format(tmpSQL, _commandid, _params, _desc, _eventTrigger);
                 else
-                    tmpSQL = string.Format(tmpSQL, _commandid, _params, _desc);
+                    tmpSQL = string.Format(tmpSQL, _commandid, _params, _desc, _eventTrigger);
 
                 _dbTool.SQLExec(tmpSQL, out error, true);
 
@@ -5270,12 +8495,13 @@ namespace RTDWebAPI.Service
 
             DataTable dt = null;
             string tmpSql = "";
-
+            JCETWebServicesClient jcetWebServiceClient = new JCETWebServicesClient();
+            JCETWebServicesClient.ResultMsg resultMsg = new JCETWebServicesClient.ResultMsg();
             try
             {
-                JCETWebServicesClient jcetWebServiceClient = new JCETWebServicesClient();
+                jcetWebServiceClient = new JCETWebServicesClient();
                 jcetWebServiceClient._url = url;
-                JCETWebServicesClient.ResultMsg resultMsg = new JCETWebServicesClient.ResultMsg();
+                resultMsg = new JCETWebServicesClient.ResultMsg();
                 resultMsg = jcetWebServiceClient.CurrentLotState(webServiceMode, username, password, _lotId);
                 string result3 = resultMsg.retMessage;
 
@@ -5377,6 +8603,11 @@ namespace RTDWebAPI.Service
             {
                 tmpMsg = string.Format("Unknow issue: [{0}][Exception] {1}", funcCode, ex.Message);
                 _logger.Debug(ex.Message);
+            }
+            finally
+            {
+                jcetWebServiceClient = null;
+                resultMsg = null;
             }
 
             return retMsg;
@@ -5559,6 +8790,29 @@ namespace RTDWebAPI.Service
                 tmpMsg = "[SetEquipmentPortModel] Unknow Error : Equipment Id [{0}]. {1}";
                 _errMessage = String.Format(tmpMsg, _equipId, ex.Message);
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtCarrierType != null)
+                    dtCarrierType.Dispose();
+                if (dtDefaultSet != null)
+                    dtDefaultSet.Dispose();
+                if (dtEeqPortSet != null)
+                    dtEeqPortSet.Dispose();
+                if (dtPortType != null)
+                    dtPortType.Dispose();
+                if (dtSet != null)
+                    dtSet.Dispose();
+            }
+            dt = null;
+            dtCarrierType = null;
+            dtDefaultSet = null;
+            dtEeqPortSet = null;
+            dtPortType = null;
+            dtSet = null;
+            dr = null;
+            drDefaultSet = null;
 
             return bResult;
         }
@@ -5585,11 +8839,20 @@ namespace RTDWebAPI.Service
             string tmpMsg = "";
             string _errMessage = "";
             tmpMessage = "";
-            DataTable dt;
-            DataTable dt2;
+            DataTable dt = null;
+            DataTable dt2 = null;
+
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
 
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
                 sql = _BaseDataService.QueryProcLotInfo();
                 dt = _dbTool.GetDataTable(sql);
 
@@ -5605,10 +8868,11 @@ namespace RTDWebAPI.Service
                     {
                         bAutoHold = false;
                         lotid = dr["LOTID"].ToString().Equals("") ? "" : dr["LOTID"].ToString();
+                        carrierId = "";
 
                         if (!lotid.Equals(""))
                         {
-                            sql = _BaseDataService.SelectTableWorkInProcessSchByLotId(lotid);
+                            sql = _BaseDataService.SelectTableWorkInProcessSchByLotId(lotid, tableOrder);
                             dt2 = _dbTool.GetDataTable(sql);
 
                             if (dt2.Rows.Count > 0)
@@ -5624,12 +8888,12 @@ namespace RTDWebAPI.Service
                                     {
                                         sql = _BaseDataService.UpdateTableWorkInProcessSchHisByUId(GId);
                                         _dbTool.SQLExec(sql, out tmpMsg, true);
-                                        sql = _BaseDataService.DeleteWorkInProcessSchByGId(GId);
+                                        sql = _BaseDataService.DeleteWorkInProcessSchByGId(GId, tableOrder);
                                         _dbTool.SQLExec(sql, out tmpMsg, true);
 
                                         if (tmpMsg.Equals(""))
                                         {
-                                            string[] tmpString = new string[] { GId, "", "" };
+                                            string[] tmpString = new string[] { GId, "", "", "" };
                                             CallRTDAlarm(_dbTool, 30000, tmpString);
 
                                             bAutoHold = true;
@@ -5649,11 +8913,12 @@ namespace RTDWebAPI.Service
 
                         if (bAutoHold)
                         {
-                            _dbTool.SQLExec(_BaseDataService.UpdateTableLotInfoState(lotid, "HOLD"), out tmpMsg, true);
+                            //_dbTool.SQLExec(_BaseDataService.UpdateTableLotInfoState(lotid, "HOLD"), out tmpMsg, true);
+                            _dbTool.SQLExec(_BaseDataService.UpdateTableCarrierTransferByCarrier(carrierId, "SYSHOLD"), out tmpMsg, true);
 
                             if (tmpMsg.Equals(""))
                             {
-                                string[] tmpString = new string[] { lotid, "", "" };
+                                string[] tmpString = new string[] { lotid, "", "", "" };
                                 CallRTDAlarm(_dbTool, 30001, tmpString);
 
                                 bResult = true;
@@ -5677,6 +8942,15 @@ namespace RTDWebAPI.Service
                 _errMessage = String.Format(tmpMsg, ex.Message);
                 _logger.Debug(_errMessage);
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+            }
+            dt = null;
+            dt2 = null;
 
             return bResult;
         }
@@ -5686,21 +8960,61 @@ namespace RTDWebAPI.Service
             string tmpMsg = "";
             string sql = "";
             DataTable dt = null;
+            DataTable dt2 = null;
             DataTable dtTemp = null;
+            string _tmpLot = "";
+            string v_carrier_id = "";
+            string v_LOT_ID = "";
+            string _quantity = "";
+            string _totalQty = "";
 
             try
             {
+                //.R and .S 都使用原本 lotID 8111.1.R / 8111.1.S >>皆用 8111.1信息回覆
+                //if (_lotid.IndexOf("R") > 0 || _lotid.IndexOf("S") > 0)
+                //{
+                //    if (_lotid.IndexOf("R") > 0)
+                //        _tmpLot = _lotid.Replace("R", "");
+                //    else
+                //        _tmpLot = _lotid.Replace("S", "");
+                //}
+                //else
+                //    _tmpLot = _lotid;
+
+                v_LOT_ID = _lotid;
                 sql = string.Format(_BaseDataService.CheckLocationByLotid(_lotid));
+                dtTemp = _dbTool.GetDataTable(sql);
+                v_carrier_id = dtTemp.Rows[0]["carrier_id"].ToString().Equals("") ? "" : dtTemp.Rows[0]["carrier_id"].ToString();
+
+                sql = _BaseDataService.QueryLotInfoByCarrierID(v_carrier_id);
+                dt2 = _dbTool.GetDataTable(sql);
+
+                if (dt2.Rows.Count > 0)
+                {
+                    _quantity = dt2.Rows[0]["quantity"].ToString().Equals("") ? "0" : dt2.Rows[0]["quantity"].ToString().Trim();
+                    _totalQty = dt2.Rows[0]["total_qty"].ToString().Equals("") ? "0" : dt2.Rows[0]["total_qty"].ToString().Trim(); ;
+                }
+                else
+                {
+                    _quantity = "0";
+                    _totalQty = "0";
+                }
+
+                if (_lotid.Contains("R") || _lotid.Contains("S"))
+                    _tmpLot = _lotid.Replace("R", "").Replace("S", "");
+                else
+                    _tmpLot = _lotid;
+
+                sql = string.Format(_BaseDataService.CheckLocationByLotid(_tmpLot.Trim()));
                 dt = _dbTool.GetDataTable(sql);
+
                 if (dt.Rows.Count > 0)
                 {
                     tmpMsg = string.Format("[TriggerCarrierInfoUpdate: CheckLocationByLotid. {0} / {1}]", _lotid, _configuration["eRackDisplayInfo:contained"]);
                     _logger.Debug(tmpMsg);
 
                     List<string> args = new();
-                    string v_LOT_ID = "";
                     string v_STAGE = "";
-                    string v_carrier_id = "";
                     string v_CUSTOMERNAME = "";
                     string v_PARTID = "";
                     string v_LOTTYPE = "";
@@ -5709,28 +9023,34 @@ namespace RTDWebAPI.Service
                     string v_HOLDCODE = "";
                     string v_TURNRATIO = "0";
                     string v_EOTD = "";
+                    string v_HOLDREAS = "";
                     string v_POTD = "";
+                    string v_WAFERLOT = "";
+                    string v_Quantity = _quantity;
+                    string v_TotalQty = _totalQty;
                     try
                     {
-                        v_carrier_id = dt.Rows[0]["carrier_id"].ToString().Equals("") ? "" : dt.Rows[0]["carrier_id"].ToString();
-                        v_LOT_ID = _lotid;
+                        //v_carrier_id = dt.Rows[0]["carrier_id"].ToString().Equals("") ? "" : dt.Rows[0]["carrier_id"].ToString();
+                        v_LOT_ID = _lotid;//_lotid;
                         v_CUSTOMERNAME = dt.Rows[0]["CUSTOMERNAME"].ToString().Equals("") ? "" : dt.Rows[0]["CUSTOMERNAME"].ToString();
                         v_PARTID = dt.Rows[0]["PARTID"].ToString().Equals("") ? "" : dt.Rows[0]["PARTID"].ToString();
                         v_LOTTYPE = dt.Rows[0]["LOTTYPE"].ToString().Equals("") ? "" : dt.Rows[0]["LOTTYPE"].ToString();
                         v_STAGE = dt.Rows[0]["stage"].ToString().Equals("") ? "" : dt.Rows[0]["stage"].ToString();
 
-                        sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], v_LOT_ID);
+                        sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], _tmpLot.Trim());
                         dtTemp = _dbTool.GetDataTable(sql);
 
                         if (dtTemp.Rows.Count > 0)
                         {
-                            v_STAGE = !v_STAGE.Equals("") ? "" : dtTemp.Rows[0]["STAGE"].ToString();
+                            v_STAGE = v_STAGE.Equals("") ? dtTemp.Rows[0]["STAGE"].ToString() : "";
                             v_AUTOMOTIVE = dtTemp.Rows[0]["AUTOMOTIVE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["AUTOMOTIVE"].ToString();
                             v_STATE = dtTemp.Rows[0]["STATE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["STATE"].ToString();
                             v_HOLDCODE = dtTemp.Rows[0]["HOLDCODE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HOLDCODE"].ToString();
                             v_TURNRATIO = dtTemp.Rows[0]["TURNRATIO"].ToString().Equals("") ? "0" : dtTemp.Rows[0]["TURNRATIO"].ToString();
                             v_EOTD = dtTemp.Rows[0]["EOTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["EOTD"].ToString();
                             v_POTD = dtTemp.Rows[0]["POTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["POTD"].ToString();
+                            v_HOLDREAS = dtTemp.Rows[0]["HoldReas"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HoldReas"].ToString();
+                            v_WAFERLOT = dtTemp.Rows[0]["waferlotid"].ToString().Equals("") ? "" : dtTemp.Rows[0]["waferlotid"].ToString();
                         }
                     }
                     catch (Exception ex)
@@ -5739,20 +9059,33 @@ namespace RTDWebAPI.Service
                         _logger.Debug(tmpMsg);
                     }
 
-                    args.Add(v_LOT_ID);
-                    args.Add(v_STAGE.Equals("") ? dt.Rows[0]["STAGE"].ToString() : v_STAGE);
-                    args.Add("");//("machine");
-                    args.Add("");//("desc");
-                    args.Add(v_carrier_id);
-                    args.Add(v_CUSTOMERNAME);
-                    args.Add(v_PARTID);//("PartID");
-                    args.Add(v_LOTTYPE);//("LotType");
-                    args.Add(v_AUTOMOTIVE);//("Automotive");
-                    args.Add(v_STATE);//("State");
-                    args.Add(v_HOLDCODE);//("HoldCode");
-                    args.Add(v_TURNRATIO);//("TURNRATIO");
-                    args.Add(v_EOTD);//("EOTD");
-                    SentCommandtoMCSByModel(_configuration, _logger, "InfoUpdate", args);
+                    if (CheckMCSStatus(_dbTool, _logger))
+                    {
+                        args.Add(v_LOT_ID);
+                        args.Add(v_STAGE);
+                        args.Add("");//("machine");
+                        args.Add("");//("desc");
+                        args.Add(v_carrier_id);
+                        args.Add(v_CUSTOMERNAME);
+                        args.Add(v_PARTID);//("PartID");
+                        args.Add(v_LOTTYPE);//("LotType");
+                        args.Add(v_AUTOMOTIVE);//("Automotive");
+                        args.Add(v_STATE);//("State");
+                        args.Add(v_HOLDCODE);//("HoldCode");
+                        args.Add(v_TURNRATIO);//("TURNRATIO");
+                        args.Add(v_EOTD);//("EOTD");
+                        args.Add(v_HOLDREAS);//("EOTD");
+                        args.Add(v_POTD);//("EOTD");
+                        args.Add(v_WAFERLOT);//("EOTD");
+                        args.Add(v_Quantity);//("Quantity");
+                        args.Add(v_TotalQty);//("TotalQty");
+                        SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+
+                    }
+                    else
+                    {
+                        _logger.Info(string.Format("MCS Status incorrect, [{0}][{1}] not success. [{2}]", "TriggerCarrierInfoUpdate", "InfoUpdate", v_carrier_id));
+                    }
                 }
 
                 bResult = true;
@@ -5763,6 +9096,15 @@ namespace RTDWebAPI.Service
                 tmpMsg = string.Format("Send InfoUpdate Fail, Exception: {0}", ex.Message);
                 _logger.Debug(tmpMsg);
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose(); 
+            }
+            dt = null;
+            dtTemp = null;
 
             return bResult;
         }
@@ -5823,6 +9165,12 @@ namespace RTDWebAPI.Service
                 _errMsg = tmpMsg;
                 _logger.Debug(tmpMsg);
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();              
+            }
+            dt = null;
 
             return bResult;
         }
@@ -5863,6 +9211,12 @@ namespace RTDWebAPI.Service
             catch (Exception ex)
             {
             }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose(); 
+            }
+             dt = null;  
 #endif
 
             return bResult;
@@ -5980,7 +9334,7 @@ namespace RTDWebAPI.Service
                         {
                             carrierLotAssociate = new CarrierLotAssociate();
 
-                            dateTime = DateTime.UtcNow.ToString("yyyy/MM/dd HH:mm:ss");
+                            dateTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
 
                             carrierLotAssociate.CarrierID = dr["CSTID"].ToString().Trim();
                             carrierLotAssociate.TagType = "LF";
@@ -6005,19 +9359,22 @@ namespace RTDWebAPI.Service
                             }
                             else
                             {
-                                if(!carrierLotAssociate.LotID.Equals(dtTemp.Rows[0]["lot_id"].ToString()))
+                                if (!carrierLotAssociate.LotID.Equals(dtTemp.Rows[0]["lot_id"].ToString()))
                                 {
                                     doLogic = 2;
-                                } else if (!carrierLotAssociate.Quantity.Equals(dtTemp.Rows[0]["quantity"].ToString())) {
+                                }
+                                else if (!carrierLotAssociate.Quantity.Equals(dtTemp.Rows[0]["quantity"].ToString()))
+                                {
                                     doLogic = 2;
-                                } else
+                                }
+                                else
                                 {
                                     doLogic = 0;
                                 }
-                                
+
                             }
 
-                            if(doLogic.Equals(1))
+                            if (doLogic.Equals(1))
                             {
                                 tmpMsg = "";
                                 _dbTool.SQLExec(_BaseDataService.InsertCarrierLotAsso(carrierLotAssociate), out tmpMsg, true);
@@ -6055,7 +9412,15 @@ namespace RTDWebAPI.Service
             {
                 _logger.Debug(string.Format("Sync Extenal Carrier Data Failed. [Exception: {0}]", ex.Message));
             }
-
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+            }
+            dt = null;
+            dtTemp = null;
 
             return bResult;
         }
@@ -6150,7 +9515,7 @@ namespace RTDWebAPI.Service
         {
             Global _global = new Global();
             string sql = "";
-            DataTable dtTemp;
+            DataTable dtTemp = null;
 
             try
             {
@@ -6191,6 +9556,13 @@ namespace RTDWebAPI.Service
             {
                 
             }
+            finally
+            {
+                if (dtTemp != null)
+                    dtTemp.Dispose(); 
+            }
+            dtTemp = null;
+
             return _global;
         }
         public bool PreDispatchToErack(DBTool _dbTool, IConfiguration _configuration, ConcurrentQueue<EventQueue> _eventQueue, ILogger _logger)
@@ -6204,43 +9576,190 @@ namespace RTDWebAPI.Service
             EventQueue _eventQ = new EventQueue();
             string funcName = "MoveCarrier";
             TransferList transferList = new TransferList();
+            string carrierId = "";
+            string _workgroup = "";
+            string _customer = "";
+            string _partid = "";
+            string _values1 = "";
             string tableName = "";
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+            string _locationType = "";
+            string _inErack = "";
+            bool _pretransfer = false;
+            string _destStage = "";
+            string _eqpWorkgroup = "";
+
+            string _sideWarehouse = "";
+            bool _swSideWh = false;
+            bool _onSideWH = false;
 
             try
             {
-                tableName = _configuration["PreDispatchToErack:lotState:tableName"]　is null ? "lot_Info" : _configuration["PreDispatchToErack:lotState:tableName"];
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+                tableName = _configuration["PreDispatchToErack:lotState:tableName"] is null ? "lot_Info" : _configuration["PreDispatchToErack:lotState:tableName"];
 
-                sql = _BaseDataService.QueryPreTransferList(tableName);
+                if (_keyRTDEnv.ToUpper().Equals("PROD"))
+                    sql = _BaseDataService.QueryPreTransferList(tableName);
+                else if (_keyRTDEnv.ToUpper().Equals("UAT"))
+                    sql = _BaseDataService.QueryPreTransferListForUat(tableName);
+
                 dtTemp = _dbTool.GetDataTable(sql);
 
-                if (dtTemp.Rows.Count > 0)
+                if (dtTemp is not null && dtTemp.Rows.Count > 0)
                 {
                     foreach (DataRow dr in dtTemp.Rows)
                     {
+                        _workgroup = "";
+                        _customer = "";
+                        _partid = "";
+                        _values1 = "";
+                        //workgroup, customername, partid, in_eRack, locate, carrier_ID, lot_ID, in_eRack
+                        _workgroup = dr["workgroup"].ToString().Equals("") ? "*" : dr["workgroup"].ToString();
+                        _customer = dr["customername"].ToString().Equals("") ? "*" : dr["customername"].ToString();
+                        _partid = dr["partid"].ToString().Equals("") ? "*" : dr["partid"].ToString();
+                        _pretransfer = dr["pretransfer"].ToString().Equals("0") ? false : true;
 
-                        sql = _BaseDataService.CheckCarrierLocate(dr["in_eRack"].ToString(), dr["locate"].ToString());
+                        if (!_pretransfer)
+                            continue;
+
+                        //lot locate
+                        _locationType = dr["location_type"].ToString().Equals("") ? "" : dr["location_type"].ToString();
+
+                        sql = _BaseDataService.GetWorkgroupDetailSet("pretransfer", _workgroup, "", "partid");
+                        dtTemp2 = _dbTool.GetDataTable(sql);
+
+                        if (dtTemp2.Rows.Count > 0)
+                        {
+                            _values1 = dtTemp2.Rows[0]["values1"].ToString().Equals("") ? "*" : dtTemp2.Rows[0]["values1"].ToString();
+
+                            if(!_partid.Equals(_values1))
+                            {
+                                continue;
+                            }
+                        }
+
+                        transferList = new TransferList();
+                        carrierId = "";
+
+                        if (_locationType.Equals("STK"))
+                        {
+                            try
+                            {
+                                sql = _BaseDataService.QueryRackByGroupID(dr["in_eRack"].ToString());
+                                dtTemp2 = _dbTool.GetDataTable(sql);
+                                if (dtTemp2.Rows.Count > 0)
+                                    _inErack = dtTemp2.Rows[0]["erackID"].ToString();
+                                else
+                                    _inErack = dr["in_eRack"].ToString();
+
+                                sql = _BaseDataService.CheckCarrierLocate(dr["in_eRack"].ToString(), dr["locate"].ToString().Split('0')[0].ToString());
+                            }
+                            catch(Exception ex) {
+                                _logger.Debug("[Exception STK]" + dr["locate"].ToString());
+                            }
+                        }
+                        else
+                        {
+                            try
+                            {
+                                _inErack = dr["in_eRack"].ToString();
+                                //in eRack STK1
+                                sql = _BaseDataService.QueryRackByGroupID(dr["in_eRack"].ToString());
+                                dtTemp2 = _dbTool.GetDataTable(sql);
+                                //A/B
+                                if (dtTemp2.Rows.Count > 0)
+                                {
+                                    if (dtTemp2.Rows[0]["MAC"].ToString().Equals("STOCK"))
+                                    {
+                                        _inErack = dtTemp2.Rows[0]["erackID"].ToString();
+                                    }
+                                    else
+                                    {
+                                        _inErack = dtTemp2.Rows[0]["erackID"].ToString();
+                                    }
+                                }
+
+                                sql = _BaseDataService.CheckCarrierLocate(dr["in_eRack"].ToString(), dr["locate"].ToString());
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Debug("[Exception STK]" + dr["locate"].ToString());
+                            }
+                        }
+
                         dtTemp2 = _dbTool.GetDataTable(sql);
 
                         if (dtTemp2.Rows.Count <= 0)
                         {
-                            string carrierId = dr["carrier_ID"].ToString().Equals("") ? "*" : dr["carrier_ID"].ToString();
-                            sql = _BaseDataService.CheckPreTransfer(carrierId);
+
+                            carrierId = dr["carrier_ID"].ToString().Equals("") ? "*" : dr["carrier_ID"].ToString();
+                            sql = _BaseDataService.CheckPreTransfer(carrierId, tableOrder);
                             dtTemp3 = _dbTool.GetDataTable(sql);
                             if (dtTemp3.Rows.Count > 0)
                                 continue;
 
-                            _eventQ = new EventQueue();
-                            _eventQ.EventName = funcName;
 
-                            transferList.CarrierID = carrierId;
-                            transferList.LotID = dr["lot_ID"].ToString().Equals("") ? "*" : dr["lot_ID"].ToString();
-                            transferList.Source = "*";
-                            transferList.Dest = dr["in_eRack"].ToString();
-                            transferList.CommandType = "Pre-Transfer";
-                            transferList.CarrierType = dr["carrier_type"].ToString();
+                            try
+                            {
+                                _destStage = dr["stage"].ToString();
 
-                            _eventQ.EventObject = transferList;
-                            _eventQueue.Enqueue(_eventQ);
+                                sql = _BaseDataService.QueryWorkgroupSet(_eqpWorkgroup, _destStage);
+                                dtTemp3 = _dbTool.GetDataTable(sql);
+                                if (dtTemp3.Rows.Count > 0)
+                                {
+                                    _sideWarehouse = dtTemp3.Rows[0]["SideWarehouse"].ToString();
+                                    _swSideWh = dtTemp3.Rows[0]["swsidewh"].ToString().Equals("1") ? true : false;
+                                }
+
+                                if (_swSideWh)
+                                {
+                                    try { 
+                                        sql = _BaseDataService.CheckLocateofSideWh(dr["locate"].ToString(), _sideWarehouse);
+                                        dtTemp3 = _dbTool.GetDataTable(sql);
+                                        if (dtTemp3.Rows.Count > 0)
+                                        {
+                                            _onSideWH = true;
+                                            _logger.Debug(string.Format("[SideWH][{0}][{1}][{2}]", dr["locate"].ToString(), _sideWarehouse, _onSideWH));
+                                        }
+                                        else
+                                        {
+                                            _onSideWH = false;
+                                        }
+                                    }
+                                    catch (Exception ex) {
+                                        _logger.Debug(string.Format("[Exception SideWH][{0}][{1}][{2}]" , dr["locate"].ToString(), _sideWarehouse, ex.Message));
+                                    }
+                                }
+                            }
+                            catch (Exception ex) { }
+
+                            if (_onSideWH)
+                            { continue; }
+                            else
+                            {
+
+                                _eventQ = new EventQueue();
+                                _eventQ.EventName = funcName;
+
+                                transferList.CarrierID = carrierId;
+                                transferList.LotID = dr["lot_ID"].ToString().Equals("") ? "*" : dr["lot_ID"].ToString();
+                                transferList.Source = "*";
+                                //transferList.Dest = dr["in_eRack"].ToString();
+                                transferList.Dest = _inErack;
+                                transferList.CommandType = "Pre-Transfer";
+                                transferList.CarrierType = dr["carrier_type"].ToString();
+
+                                tmpMsg = string.Format("[{0}][{1} / {2} / {3} / {4} / {5}]", transferList.CommandType, transferList.LotID, transferList.CarrierID, transferList.Source, transferList.Dest, transferList.CarrierType);
+                                _logger.Debug(tmpMsg);
+
+                                _eventQ.EventObject = transferList;
+                                _eventQueue.Enqueue(_eventQ);
+                            }
                         }
                     }
                 }
@@ -6251,6 +9770,18 @@ namespace RTDWebAPI.Service
             {
                 _logger.Debug(string.Format("PreDispatchToErack Unknow Error. [Exception: {0}]", ex.Message));
             }
+            finally
+            {
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+                if (dtTemp2 != null)
+                    dtTemp2.Dispose();
+                if (dtTemp3 != null)
+                    dtTemp3.Dispose();
+            }
+            dtTemp = null;
+            dtTemp2 = null;
+            dtTemp3 = null;
 
             return bResult;
         }
@@ -6281,6 +9812,12 @@ namespace RTDWebAPI.Service
 
                 return null;
             }
+            finally
+            {
+                
+            }
+            dr = null;
+
             return null;
         }
         public bool CarrierLocationUpdate(DBTool _dbTool, IConfiguration _configuration, CarrierLocationUpdate value, ILogger _logger)
@@ -6361,7 +9898,14 @@ namespace RTDWebAPI.Service
             }
             finally
             {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
             }
+            dt = null;
+            dtTemp = null;
+            dr = null;
 
             return true;
         }
@@ -6375,9 +9919,17 @@ namespace RTDWebAPI.Service
             string sql = "";
             bool bExecSql = false;
             int FailedNum = 0;
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
 
             try
             {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
                 var jsonStringName = new JavaScriptSerializer();
                 var jsonStringResult = jsonStringName.Serialize(value);
                 _logger.Info(string.Format("Function:{0}, Received:[{1}]", funcName, jsonStringResult));
@@ -6388,14 +9940,14 @@ namespace RTDWebAPI.Service
                 {
                     try
                     {
-                        sql = _BaseDataService.SelectTableWorkInProcessSchByCmdId(value.CommandID);
+                        sql = _BaseDataService.SelectTableWorkInProcessSchByCmdId(value.CommandID, tableOrder);
                         dt = _dbTool.GetDataTable(sql);
 
                         if (dt.Rows.Count > 0)
                         {
                             //if (!dt.Rows[0]["cmd_type"].ToString().Equals("Pre-Transfer"))
                             //{
-                                bExecSql = _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId(value.Status, value.LastStateTime, value.CommandID.Trim()), out tmpMsg, true);
+                                bExecSql = _dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId(value.Status, value.LastStateTime, value.CommandID.Trim(), tableOrder), out tmpMsg, true);
 
                                 if (bExecSql)
                                     break;
@@ -6435,7 +9987,14 @@ namespace RTDWebAPI.Service
             }
             finally
             {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
             }
+            dt = null;
+            dtTemp = null;
+            dr = null;
 
             return true;
         }
@@ -6497,7 +10056,14 @@ namespace RTDWebAPI.Service
             }
             finally
             {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose();
             }
+            dt = null;
+            dtTemp = null;
+            dr = null;
 
             return true;
         }
@@ -6510,6 +10076,7 @@ namespace RTDWebAPI.Service
             DataRow[] dr = null;
             string sql = "";
             string eqState = "";
+            Boolean _isDisabled = false;
 
             try
             {
@@ -6525,10 +10092,140 @@ namespace RTDWebAPI.Service
 
                 if (dt.Rows.Count > 0)
                 {
-                    if (!dt.Rows[0]["Curr_Status"].ToString().Equals(value.EqState))
+                    string _currState = "";
+                    string _machineState = "";
+                    string _downState = "";
+
+                    sql = string.Format(_BaseDataService.GetRTSEquipStatus(GetExtenalTables(_configuration, "SyncExtenalData", "RTSEQSTATE"), value.EqID));
+                    dtTemp = _dbTool.GetDataTable(sql);
+                    if(dtTemp.Rows.Count >0)
                     {
-                        sql = string.Format(_BaseDataService.UpdateTableEQP_STATUS(value.EqID, value.EqState.ToString()));
+                        //Machine_state, Curr_Status, Down_State
+                        try
+                        {
+                            _currState = dtTemp.Rows[0]["Curr_Status"].ToString().Length <= 10 ? dtTemp.Rows[0]["Curr_Status"].ToString() : dtTemp.Rows[0]["Curr_Status"].ToString().Split(',')[0].Trim();
+                            _machineState = dtTemp.Rows[0]["Machine_state"].ToString().Length <= 10 ? dtTemp.Rows[0]["Machine_state"].ToString() : dt.Rows[0]["Machine_state"].ToString().Substring(0, 10).Trim();
+                            _downState = dtTemp.Rows[0]["Down_State"].ToString().Length <= 10 ? dtTemp.Rows[0]["Down_State"].ToString() : dtTemp.Rows[0]["Down_State"].ToString().Substring(0, 10).Trim();
+                        }
+                        catch (Exception ex)
+                        {
+                            _currState = dt.Rows[0]["Curr_Status"].ToString().Substring(0, 10).Trim();
+                            _machineState = dt.Rows[0]["Machine_state"].ToString().Substring(0, 10).Trim();
+                            _downState = dt.Rows[0]["Down_State"].ToString().Substring(0, 10).Trim();
+                        }
+                    }
+
+                    if (!dt.Rows[0]["Curr_Status"].ToString().Equals(eqState))
+                    {
+                        sql = string.Format(_BaseDataService.UpdateTableEQP_STATUS(value.EqID, value.EqState, _machineState, _downState));
                         _dbTool.SQLExec(sql, out tmpMsg, true);
+                    }
+                    else if (!dt.Rows[0]["Machine_state"].ToString().Equals(_machineState))
+                    {
+                        sql = string.Format(_BaseDataService.UpdateTableEQP_STATUS(value.EqID, value.EqState, _machineState, _downState));
+                        _dbTool.SQLExec(sql, out tmpMsg, true);
+                    }
+                    else if (!dt.Rows[0]["Down_State"].ToString().Equals(_downState))
+                    {
+                        sql = string.Format(_BaseDataService.UpdateTableEQP_STATUS(value.EqID, value.EqState, _machineState, _downState));
+                        _dbTool.SQLExec(sql, out tmpMsg, true);
+                    }
+                }
+
+                foreach (var strPort in value.PortInfoList)
+                {
+                    //SelectTableEQP_Port_SetByPortId
+                    sql = string.Format(_BaseDataService.SelectTableEQP_Port_SetByPortId(strPort.PortID));
+                    dtTemp = _dbTool.GetDataTable(sql);
+                    if (dtTemp.Rows.Count > 0)
+                    {
+                        if (dtTemp.Rows.Count > 0)
+                        {
+                            _isDisabled = dtTemp.Rows[0]["DISABLE"].ToString().Equals("1") ? true : false;
+                        }
+
+                        if (_isDisabled)
+                            continue;
+
+                        int _portstate = dtTemp.Rows[0]["port_state"] is null ? 0 : int.Parse(dtTemp.Rows[0]["port_state"].ToString());//port_state
+                        if (!strPort.PortTransferState.Equals(_portstate))
+                        {
+                            //update port
+                            //UpdateTableEQP_Port_Set
+                            _dbTool.SQLExec(_BaseDataService.UpdateTableEQP_Port_Set(value.EqID, strPort.PortID.Split("_LP")[1].ToString(), strPort.PortTransferState.ToString()), out tmpMsg, true);
+
+                            try {
+
+                                int haveMetalRing = 0;
+                                if (!strPort.CarrierID.Equals(""))
+                                {
+                                    //更新Carrier 位置
+                                    sql = string.Format(_BaseDataService.GetCarrierByLocate(value.EqID, int.Parse(strPort.PortID.Split("_LP")[1].ToString())));
+                                    dtTemp = _dbTool.GetDataTable(sql);
+
+                                    if (dtTemp.Rows.Count > 0)
+                                    {
+                                        /** 最新的Carrier: value.CarrierID, 舊的Carrier: dtTemp.Rows[0]["carrier_id"].ToString()*/
+                                        if (dtTemp.Rows[0]["carrier_id"].ToString().Equals(strPort.CarrierID))
+                                        {
+                                            //不更新
+                                        }
+                                        else
+                                        {
+                                            CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
+                                            oCarrierLoc.CarrierID = strPort.CarrierID;
+                                            oCarrierLoc.TransferState = strPort.PortTransferState.ToString();
+                                            oCarrierLoc.Location = strPort.PortID;
+                                            oCarrierLoc.LocationType = "EQP";
+
+                                            //清除舊的Carrier Locate
+                                            sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                            //更新新的Carrier Locate
+                                            sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(oCarrierLoc, haveMetalRing));
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                        }
+                                    }
+                                    else
+                                    {
+                                        CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
+                                        oCarrierLoc.CarrierID = strPort.CarrierID;
+                                        oCarrierLoc.TransferState = strPort.PortTransferState.ToString();
+                                        oCarrierLoc.Location = strPort.PortID;
+                                        oCarrierLoc.LocationType = "EQP";
+
+                                        //更新新的Carrier Locate
+                                        sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(oCarrierLoc, haveMetalRing));
+                                        _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                    }
+
+                                }
+                                else
+                                {
+                                    //更新Carrier 位置
+                                    sql = string.Format(_BaseDataService.GetCarrierByLocate(value.EqID, int.Parse(strPort.PortID.Split("_LP")[1].ToString())));
+                                    dtTemp = _dbTool.GetDataTable(sql);
+
+                                    if (dtTemp.Rows.Count > 0)
+                                    {
+                                        CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
+                                        oCarrierLoc.CarrierID = strPort.CarrierID;
+                                        oCarrierLoc.TransferState = strPort.PortTransferState.ToString();
+                                        oCarrierLoc.Location = strPort.PortID;
+                                        oCarrierLoc.LocationType = "EQP";
+
+                                        //清除舊的Carrier Locate
+                                        sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
+                                        _dbTool.SQLExec(sql, out tmpMsg, true);
+                                    }
+                                }
+
+                            } catch(Exception ex) { }
+
+                        }
                     }
                 }
             }
@@ -6541,9 +10238,1472 @@ namespace RTDWebAPI.Service
             }
             finally
             {
+                if (dt != null)
+                    dt.Dispose();
+                if (dtTemp != null)
+                    dtTemp.Dispose(); 
             }
+            dt = null;
+            dtTemp = null;
+            dr = null;
 
             return true;
         }
+        public bool NightOrDay(string _currDateTime)
+        {
+            bool _Night = false;
+
+            try
+            {
+                if (_currDateTime.Equals(""))
+                    return _Night;
+
+                //將時間轉換為DateTime
+                DateTime date = Convert.ToDateTime(_currDateTime);
+
+                //處於開始時間和結束時間的判斷式 //目前班別為早8晚8為日班/晚8早8為夜班
+                if (date.Hour >= 20 || date.Hour < 8)
+                {
+                    _Night = true;
+                }
+                else
+                {
+                    _Night = false;
+                }
+            }
+            catch(Exception ex)
+            {
+
+            }
+
+            return _Night;
+        }
+        public List<HisCommandStatus> GetHistoryCommands(DBTool _dbTool, Dictionary<string, string> _alarmDetail, string StartDateTime, string CurrentDateTime, string Unit, string Zone)
+        {
+            List<HisCommandStatus> foo;
+            string funcName = "GetHistoryCommands";
+            string tmpMsg = "";
+            DataTable dt = null;
+            DataTable dtTemp = null;
+            DataRow[] dr = null;
+            string sql = "";
+            IBaseDataService _BaseDataService = new BaseDataService();
+            foo = new List<HisCommandStatus>();
+            DateTime dtStart;
+            DateTime dtEnd;
+            double dHour = 0;
+            double dunit = 1;
+            DateTime dtStartUTCTime;
+            DateTime dtCurrUTCTime;
+            DateTime dtLocStartTime;
+            DateTime dtLocTime;
+            bool isNightShift = false;
+
+            try
+            {
+                if (Zone.Contains("-"))
+                {
+                    dunit = 1;
+                    dHour = dunit * double.Parse(Zone.Replace("-", ""));
+                }
+                else if (Zone.Contains("+"))
+                {
+                    dunit = -1;
+                    dHour = dunit * double.Parse(Zone.Replace("+", ""));
+                }
+                else
+                {
+                    dunit = -1;
+                    dHour = dunit * double.Parse(Zone);
+                }
+
+                if (CurrentDateTime.Equals(""))
+                {
+                    dtLocStartTime = DateTime.Now;
+                    dtLocTime = DateTime.Now;
+                    dtStartUTCTime = DateTime.Now;
+                    dtCurrUTCTime = DateTime.Now;
+                }
+                else
+                {
+                    dtLocTime = DateTime.Parse(CurrentDateTime);
+                    dtCurrUTCTime = DateTime.Parse(CurrentDateTime).AddHours(dHour);
+
+                    if (StartDateTime is null || StartDateTime.Equals(""))
+                    {
+                        dtLocStartTime = dtLocTime;
+                        dtStartUTCTime = DateTime.Parse(CurrentDateTime).AddHours(dHour);
+                    }
+                    else
+                    {
+                        dtLocStartTime = DateTime.Parse(StartDateTime);
+                        dtStartUTCTime = DateTime.Parse(StartDateTime).AddHours(dHour);
+                    }
+                }
+
+                isNightShift = NightOrDay(CurrentDateTime);
+
+                switch(Unit.ToUpper())
+                {
+                    case "YEAR":
+                            dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                            dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                        break;
+                    case "MONTH":
+                            dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                            dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                        break;
+                    case "WEEK":
+                            dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                            dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                        break;
+                    case "SHIFT":
+
+                        DateTime date = Convert.ToDateTime(CurrentDateTime);
+
+                        if (isNightShift)
+                        {
+                            if(date.Hour < 8)
+                            {
+                                dtStart = DateTime.Parse(dtLocStartTime.AddDays(-1).ToString("yyyy-MM-dd ") + " 20:00").AddHours(dHour);
+                                dtEnd = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 08:00").AddHours(dHour);
+                            }
+                            else
+                            {
+                                dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 20:00").AddHours(dHour);
+                                dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 08:00").AddHours(dHour);
+                            }
+                        }
+                        else
+                        {
+                            if (StartDateTime is null || StartDateTime.Equals(""))
+                            {
+                                dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 08:00").AddHours(dHour);
+                                dtEnd = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd ") + " 20:00").AddHours(dHour);
+                            }
+                            else
+                            {
+                                dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(dHour);
+                                dtEnd = DateTime.Parse(dtLocTime.ToString("yyyy-MM-dd HH:mm:ss")).AddHours(dHour);
+                            }
+                        }
+                        break;
+                    case "DAY":
+                    default:
+
+                        dtStart = DateTime.Parse(dtLocStartTime.ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+                        dtEnd = DateTime.Parse(dtLocTime.AddDays(1).ToString("yyyy-MM-dd ") + " 00:00").AddHours(dHour);
+
+                        break;
+                }
+
+                sql = _BaseDataService.GetHistoryCommands(dtStart.ToString("yyyy/MM/dd HH:mm:ss"), dtEnd.ToString("yyyy/MM/dd HH:mm:ss"));
+                dt = _dbTool.GetDataTable(sql);
+
+                if (dt.Rows.Count > 0)
+                {
+                    HisCommandStatus HisCommand;
+                    string sReason = "";
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        sReason = "";
+                        //"CommandID", "CarrierID", "LotID", "CommandType", "Source", "Dest", "AlarmCode", "Reason", "createdAt", "LastStateTime"
+                        HisCommand = new HisCommandStatus();
+                        HisCommand.CommandID = row["CommandID"].ToString();
+                        HisCommand.CarrierID = row["CarrierID"].ToString();
+                        HisCommand.LotID = row["LotID"].ToString();
+                        HisCommand.CommandType = row["CommandType"].ToString();
+                        HisCommand.Source = row["Source"].ToString();
+                        HisCommand.Dest = row["Dest"].ToString();
+                        try
+                        { 
+                            sReason = _alarmDetail[row["AlarmCode"].ToString()] is null ? "" : _alarmDetail[row["AlarmCode"].ToString()];
+                        }
+                        catch (Exception ex) { }
+                        HisCommand.AlarmCode = row["AlarmCode"].ToString();
+                        HisCommand.Reason = sReason;
+                        DateTime dtCreatedAt = DateTime.Parse(row["CreatedAt"].ToString());
+                        HisCommand.CreatedAt = dtCreatedAt.ToString("yyyy/MM/dd HH:mm:ss");
+                        DateTime dtLastStateTime = DateTime.Parse(row["LastStateTime"].ToString());
+                        HisCommand.LastStateTime = dtLastStateTime.ToString("yyyy/MM/dd HH:mm:ss");
+
+                        foo.Add(HisCommand);
+                    }
+                }
+
+                if (tmpMsg.Equals(""))
+                {
+
+                }
+                else
+                {
+
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+            finally
+            {
+                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
+                if (dt is not null)
+                {
+                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
+                }
+            }
+
+            return foo;
+        }
+        public bool TriggerAlarms(DBTool _dbTool, IConfiguration configuration, ILogger _logger)
+        {
+            //sent eMail & SMS & Call JCET CIM Actions
+
+            string funcName = "TriggerAlarms";
+            string tmpMsg = "";
+            string ErrMsg = "";
+            DataTable dt = null;
+            DataTable dtTemp = null;
+            DataRow[] dr = null;
+            string sql = "";
+            bool result = false;
+            RTDAlarms rtdAlarms = new RTDAlarms();
+
+            string apiFormat = "";
+            string apiFunc = "";
+
+            try
+            {
+                sql = _BaseDataService.QueryRTDAlarms();
+                dt = _dbTool.GetDataTable(sql);
+
+                /*
+                Sample email alert.
+Email Group: CISRTDALERT.SCS @jcetglobal.com
+1.
+Subject: Device Setup Pre - Alert
+
+Tool: XXXXX
+Next Lot: XXXXXXXX.1
+Current Lot: 83747807.1
+Mfg Device: 3SDC00011A - WL - B - 00.01
+Customer Device: XXXXXXXX
+2.
+Subject: Device Setup Alert
+Tool: XXXXX
+Next Lot: XXXXXXXX.1
+Mfg Device for next lot: XXXXXXXXXXXXXXX
+Customer Device for next lot: XXXXXXXX
+Last lot: YYYYYYYY.1
+Mfg Device for last lot: YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY
+Customer Device for last lot: YYYYYYYYYYY
+
+                */
+
+                if (dt.Rows.Count > 0)
+                {
+                    string idxAlarm = ""; 
+                    string AlarmCode = "";
+                    string eventTrigger = configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : configuration["RTDAlarm:Condition"];
+                    string tmpAlarmType = "";
+                    string tempMsg = "";
+                    List<string> tmpParams = new List<string>();
+                    MailMessage JcetAlarmMsg = new MailMessage();
+                    string _tempEqpID = "";
+                    string _tempPortID = "";
+
+                    try
+                    {
+                        foreach(DataRow drTemp in dt.Rows)
+                        {
+                            try {
+                                _tempEqpID = "";
+                                _tempPortID = "";
+
+                                rtdAlarms = new RTDAlarms();
+
+                                rtdAlarms.UnitType = drTemp["UnitType"] is null ? "" : drTemp["UnitType"].ToString();
+                                rtdAlarms.UnitID = drTemp["UnitID"] is null ? "" : drTemp["UnitID"].ToString();
+                                rtdAlarms.Level = drTemp["Level"] is null ? "" : drTemp["Level"].ToString();
+                                rtdAlarms.Code = drTemp["Code"] is null ? 0 : int.Parse(drTemp["Code"].ToString());
+                                rtdAlarms.Cause = drTemp["Cause"] is null ? "" : drTemp["Cause"].ToString();
+                                rtdAlarms.SubCode = drTemp["SubCode"] is null ? "" : drTemp["SubCode"].ToString();
+                                rtdAlarms.Detail = drTemp["Detail"] is null ? "" : drTemp["Detail"].ToString();
+                                rtdAlarms.CommandID = drTemp["CommandID"] is null ? "" : drTemp["CommandID"].ToString();
+                                rtdAlarms.Params = drTemp["Params"] is null ? "" : drTemp["Params"].ToString();
+                                rtdAlarms.Description = drTemp["Description"] is null ? "" : drTemp["Description"].ToString();
+                                //rtdAlarms.CreateAt = drTemp["CreateAt"] is null ? "" : drTemp["CreateAt"].ToString();
+                                //rtdAlarms.lastUpdated = drTemp["lastUpdated"] is null ? "" : drTemp["Description"].ToString();
+
+                                idxAlarm = drTemp["IDX"].ToString();
+                                AlarmCode = drTemp["code"].ToString();
+                                eventTrigger = drTemp["EVENTTRIGGER"] is null ? "" : drTemp["EVENTTRIGGER"].ToString();
+                                tmpParams = new List<string>();
+
+
+                                JcetAlarmMsg = new MailMessage();
+                                JcetAlarmMsg.To.Add(configuration["MailSetting:AlarmMail"]);
+                                //msg.To.Add("b@b.com");可以發送給多人
+                                //msg.CC.Add("c@c.com");
+                                //msg.CC.Add("c@c.com");可以抄送副本給多人 
+                                //這裡可以隨便填，不是很重要
+                                JcetAlarmMsg.From = new MailAddress(configuration["MailSetting:username"], configuration["MailSetting:EntryBy"], Encoding.UTF8);
+
+                                if (!eventTrigger.Equals(""))
+                                {
+                                    string strTemp = "";
+
+                                    try {
+                                        //"eMail:true$SMS:true$repeat:true$hours:0$mints:10";
+                                        string[] tmpTrigger = eventTrigger.Split('$');
+                                        foreach( var parm in tmpTrigger)
+                                        {
+                                            string[] tmpKey = parm.Split(':');
+
+                                            if (strTemp.Equals(""))
+                                                strTemp = string.Format("'{0}':{1}", tmpKey[0], tmpKey[1]);
+                                            else
+                                                strTemp = strTemp + string.Format(",'{0}':{1}", tmpKey[0], tmpKey[1]);
+                                        }
+
+                                        if(eventTrigger.Equals(""))
+                                        {
+                                            sql = _BaseDataService.UpdateRTDAlarms(true, string.Format("{0},{1},{2},{3},{4}", drTemp["UnitID"].ToString(), drTemp["Code"].ToString(), drTemp["SubCode"].ToString(), drTemp["CommandID"].ToString(), drTemp["Params"].ToString()), "");
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            continue;
+                                        }
+
+                                        strTemp = "{" + strTemp + "}";
+
+                                        try {
+                                            var TempJsonConvert = JsonConvert.DeserializeObject<JcetAlarm>(strTemp);//反序列化
+                                        }
+                                        catch (Exception ex) { continue; }
+                                    }
+                                    catch (Exception ex) { continue; }
+                                    //--params= "eMail":true, "SMS":true, "repeat":true, "hours":0, "mints":10, 
+                                    //Newtonsoft.Json反序列化
+                                    var JsonJcetAlarm = JsonConvert.DeserializeObject<JcetAlarm>(strTemp);//反序列化
+                                    var JsonObject = JObject.Parse(strTemp);
+
+                                    //tmpSmsMsg = "lotid:{0}$equipid:{1}$partid:{2}$customername:{3}$stage:{4}$nextlot:{5}$nextpart:{6}";
+                                    try
+                                    {
+                                        //"eMail:true$SMS:true$repeat:true$hours:0$mints:10";
+                                        strTemp = "";
+                                        strTemp = rtdAlarms.Params.Replace('{',' ').Replace('}',' ');
+
+                                        if (!strTemp.Equals(""))
+                                        {
+                                            strTemp = "{" + strTemp + "}";
+
+                                            try
+                                            {
+                                                var TempJsonConvert = JsonConvert.DeserializeObject<JcetAlarm>(strTemp);//反序列化
+                                            }
+                                            catch (Exception ex) { continue; }
+                                        }
+                                        else
+                                        {
+                                            strTemp = "{ \"Result\":\"None\"}";
+                                        }
+                                    }
+                                    catch (Exception ex) { }
+
+                                    //--params= "eMail":true, "SMS":true, "repeat":true, "hours":0, "mints":10, 
+                                    //Newtonsoft.Json反序列化
+                                    var JsonJcetParams = JsonConvert.DeserializeObject<JcetAlarm>(strTemp);//反序列化
+                                    //var JsonParamsObject = JObject.Parse(strTemp);
+
+                                    //_tempEqpID = GetJArrayValue((JObject)JsonParamsObject, "EquipID");
+                                    //_tempPortID = GetJArrayValue((JObject)JsonParamsObject, "PortID");
+                                    _tempEqpID = JsonJcetParams.EquipID;
+                                    _tempPortID = JsonJcetParams.PortID;
+
+                                    switch (AlarmCode)
+                                    {
+                                        case "1001":
+                                            try
+                                            {
+                                                tmpParams.Add(string.Format("Device Setup Pre-Alert"));
+                                                tmpParams.Add(string.Format(JsonJcetParams.lotid));
+                                                tmpParams.Add(string.Format(JsonJcetParams.EquipID));
+                                                tempMsg = string.Format(@"Tool: {0}
+Next Lot: {1}
+Current Lot: {2}
+Mfg Device: {3}
+Customer Device: {4}", JsonJcetParams.EquipID, JsonJcetParams.nextlot, JsonJcetParams.lotid, JsonJcetParams.stage, JsonJcetParams.partid);
+
+                                                //tmpSmsMsg = "lotid:{0}$equipid:{1}$partid:{2}$customername:{3}$stage:{4}$nextlot:{5}$nextpart:{6}";
+
+                                                _logger.Info(tempMsg);
+                                                tmpParams.Add(string.Format(tempMsg));
+                                            } catch (Exception ex)
+                                            {
+                                                tmpMsg = String.Format("[Exception]:[{0}][{1}]", AlarmCode, ex.Message);
+                                                _logger.Info(tmpMsg);
+                                            }
+                                            break;
+                                        case "1002":
+                                            try
+                                            {
+                                                tmpParams.Add(string.Format("Device Setup Alert"));
+                                                tmpParams.Add(string.Format(JsonJcetParams.nextlot));
+                                                tmpParams.Add(string.Format(JsonJcetParams.EquipID));
+                                                tempMsg = string.Format(@"Tool: {0}
+Next Lot: {1}
+Mfg Device for next lot: {2}
+Customer Device for next lot: {3}
+Last lot: {4}
+Mfg Device for last lot: {5}
+Customer Device for last lot: {6}", JsonJcetParams.EquipID, JsonJcetParams.nextlot, JsonJcetParams.nextpart, JsonJcetParams.customername, JsonJcetParams.lotid, JsonJcetParams.partid, JsonJcetParams.customername);
+
+                                                _logger.Info(tempMsg);
+                                                tmpParams.Add(string.Format(tempMsg));
+                                            } catch (Exception ex)
+                                            {
+                                                tmpMsg = String.Format("[Exception]:[{0}][{1}]", AlarmCode, ex.Message);
+                                                _logger.Info(tmpMsg);
+                                            }
+                                            break;
+                                        case "20051":
+                                            //eRack Offline
+
+                                            break;
+                                        case "20052":
+                                            //eRack water level full
+                                            //Subject content.
+                                            tmpParams.Add(string.Format("e-Rack water level Full, Setup Alert"));
+                                            //target.
+                                            tmpParams.Add(rtdAlarms.UnitID);
+                                            //Type.
+                                            tmpParams.Add(rtdAlarms.UnitType);
+                                            //Body
+                                            tempMsg = string.Format(@"UnitType: {0}
+UnitID: {1}
+Code: {2}
+Cause: {3}
+Last lot: {4}
+SubCode: {5}
+Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "", rtdAlarms.SubCode, rtdAlarms.Detail);
+
+                                            tmpParams.Add(string.Format(tempMsg));
+                                            break;
+                                        case "20053":
+                                            //eRack water level full
+                                            //Subject content.
+                                            tmpParams.Add(string.Format("e-Rack water level Full, Setup Alert"));
+                                            //target.
+                                            tmpParams.Add(rtdAlarms.UnitID);
+                                            //Type.
+                                            tmpParams.Add(rtdAlarms.UnitType);
+                                            //Body
+                                            tempMsg = string.Format(@"UnitType: {0}
+UnitID: {1}
+Code: {2}
+Cause: {3}
+Last lot: {4}
+SubCode: {5}
+Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "", rtdAlarms.SubCode, rtdAlarms.Detail);
+
+                                            tmpParams.Add(string.Format(tempMsg));
+                                            break;
+                                        case "30100":
+                                            //MCS Serious Issue. can not connect
+                                            //Subject content.
+                                            tmpParams.Add(string.Format("MCS Serious Issue, turn off mcs."));
+                                            //target.
+                                            tmpParams.Add(rtdAlarms.UnitID);
+                                            //Type.
+                                            tmpParams.Add(rtdAlarms.UnitType);
+                                            //Body
+                                            tempMsg = string.Format(@"MCS been disabled 1 minutes. over 1 minutes will auto turn on.");
+
+                                            tmpParams.Add(string.Format(tempMsg));
+
+                                            sql = _BaseDataService.ChangeMCSStatus("mcsstate", false);
+                                            _dbTool.SQLExec(sql, out tempMsg, false);
+
+                                            break;
+                                        default:
+                                            tmpParams.Add(string.Format("TSC Alarm, the toolid [{0}] get alarm [{1}].", _tempPortID, rtdAlarms.Code));
+                                            //target.
+                                            tmpParams.Add(rtdAlarms.UnitID);
+                                            //Type.
+                                            tmpParams.Add(rtdAlarms.UnitType);
+                                            //Body
+                                            tempMsg = string.Format(@"Please check the tool ID [{0}] get the {1} : {2} now.", _tempPortID, rtdAlarms.Code, rtdAlarms.Cause);
+
+                                            tmpParams.Add(string.Format(tempMsg));
+                                            break;
+                                    }
+
+                                    /* 上面3個參數分別是發件人地址（可以隨便寫），發件人姓名，編碼*/
+                                    JcetAlarmMsg.Subject = tmpParams[0];//郵件標題
+                                    JcetAlarmMsg.SubjectEncoding = Encoding.UTF8;//郵件標題編碼
+                                    JcetAlarmMsg.Body = tmpParams[3]; //郵件內容
+                                    JcetAlarmMsg.BodyEncoding = Encoding.UTF8;//郵件內容編碼 
+                                    JcetAlarmMsg.IsBodyHtml = true;//是否是HTML郵件 
+
+                                    if (JsonJcetAlarm.eMail)
+                                    {
+                                        string _alarmBy = "";
+                                        string _tmpKey = "";
+                                        ///寄送Mail
+                                        try
+                                        {
+                                            JcetAlarmMsg = new MailMessage();
+
+                                            _alarmBy = configuration[string.Format("MailSetting:AlarmBy")];
+                                            if (_alarmBy.ToUpper().Equals("ALARMBYWORKGROUP"))
+                                            {
+                                                //string _tempEqpID = JsonJcetParams.EquipID;
+                                                //string _tempPortID = JsonJcetParams.PortID;
+
+                                                //rtdAlarms.CommandID
+                                                sql = _BaseDataService.QueryPortInfobyPortID(_tempPortID);
+                                                dtTemp = _dbTool.GetDataTable(sql);
+                                                if (dtTemp.Rows.Count > 0)
+                                                {
+                                                    _tmpKey = dtTemp.Rows[0]["workgroup"].ToString().Trim();
+                                                    if (configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, _tmpKey)] is null)
+                                                    {
+                                                        //no set send to default alarm mail
+                                                        JcetAlarmMsg.To.Add(configuration["MailSetting:AlarmMail"]);
+                                                    }
+                                                    else
+                                                    {
+                                                        if (configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, _tmpKey)].Contains(","))
+                                                        {
+                                                            string[] lsMail = configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, _tmpKey)].Split(',');
+                                                            foreach (string theMail in lsMail)
+                                                            {
+                                                                JcetAlarmMsg.To.Add(theMail.Trim());
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            JcetAlarmMsg.To.Add(configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, _tmpKey)]);
+                                                        }
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    tmpMsg = string.Format("[{0}][{1}][{2}]", "QueryPortInfobyPortID", _tempPortID, configuration["MailSetting:AlarmMail"]);
+                                                    _logger.Info(tmpMsg);
+                                                    JcetAlarmMsg.To.Add(configuration["MailSetting:AlarmMail"]);
+                                                }
+                                            }
+                                            else
+                                            {
+                                                if (configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, AlarmCode)] is null)
+                                                {
+                                                    //no set send to default alarm mail
+                                                    if (configuration["MailSetting:AlarmMail"].Contains(","))
+                                                    {
+                                                        string[] lsMail = configuration["MailSetting:AlarmMail"].Split(',');
+                                                        foreach (string theMail in lsMail)
+                                                        {
+                                                            JcetAlarmMsg.To.Add(theMail.Trim());
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        JcetAlarmMsg.To.Add(configuration["MailSetting:AlarmMail"]);
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    if (configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, AlarmCode)].Contains(","))
+                                                    {
+                                                        string[] lsMail = configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, AlarmCode)].Split(',');
+                                                        foreach (string theMail in lsMail)
+                                                        {
+                                                            JcetAlarmMsg.To.Add(theMail.Trim());
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        JcetAlarmMsg.To.Add(configuration[string.Format("MailSetting:{0}:{1}", _alarmBy, AlarmCode)]);
+                                                    }
+                                                }
+                                            }
+
+                                            //msg.To.Add("b@b.com");可以發送給多人
+                                            //msg.CC.Add("c@c.com");
+                                            //msg.CC.Add("c@c.com");可以抄送副本給多人 
+                                            //這裡可以隨便填，不是很重要
+                                            JcetAlarmMsg.From = new MailAddress(configuration["MailSetting:username"], configuration["MailSetting:EntryBy"], Encoding.UTF8);
+                                            /* 上面3個參數分別是發件人地址（可以隨便寫），發件人姓名，編碼*/
+                                            JcetAlarmMsg.Subject = tmpParams[0];//郵件標題
+                                            JcetAlarmMsg.SubjectEncoding = Encoding.UTF8;//郵件標題編碼
+                                            JcetAlarmMsg.Body = tmpParams[3]; //郵件內容
+                                            JcetAlarmMsg.BodyEncoding = Encoding.UTF8;//郵件內容編碼 
+                                            JcetAlarmMsg.IsBodyHtml = true;//是否是HTML郵件 
+
+                                            //tmpMsg = string.Format("{0}{1}", tmpAlarmMsg.Subject, tmpAlarmMsg.Body);
+
+                                            MailController MailCtrl = new MailController();
+                                            MailCtrl.Config = configuration;
+                                            MailCtrl.Logger = _logger;
+                                            MailCtrl.DB = _dbTool;
+                                            MailCtrl.MailMsg = JcetAlarmMsg;
+
+                                            MailCtrl.SendMail();
+
+                                            tmpMsg = string.Format("SendMail: [{0}], [{1}]", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
+                                            _logger.Info(tmpMsg);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            tmpMsg = String.Format("SendMail failed. [Exception]: {0}", ex.Message);
+                                            _logger.Debug(tmpMsg);
+                                        }
+                                    }
+
+                                    if (JsonJcetAlarm.SMS)
+                                    {
+                                        //tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
+
+                                        ///發送SMS 
+                                        try
+                                        {
+                                            tmpMsg = "";
+                                            sql = string.Format(_BaseDataService.InsertSMSTriggerData(tmpParams[1], tmpParams[2], tmpParams[0], "N", configuration["MailSetting:EntryBy"]));
+                                            tmpMsg = string.Format("Send SMS: SQLExec[{0}]", sql);
+                                            _logger.Info(tmpMsg);
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            tmpMsg = String.Format("Insert SMS trigger data failed. [Exception]: {0}", ex.Message);
+                                            _logger.Debug(tmpMsg);
+                                        }
+                                    }
+
+                                    if (JsonJcetAlarm.action)
+                                    {
+                                        tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
+
+                                        string scenario = JsonObject.Property("scenario") == null ? "Shutdown" : JsonObject["scenario"].ToString();
+                                        if (scenario.Equals("Shutdown") || JsonJcetAlarm.scenario.Equals("Shutdown"))
+                                        {
+                                            string webServiceMode = "soap11";
+                                            string webUrl = "http://scscimapp006.jcim-sg.jsg.jcetglobal.com/C10_RTD_API";
+
+                                            JCETWebServicesClient jcetWebServiceClient = new JCETWebServicesClient();
+                                            JCETWebServicesClient.ResultMsg resultMsg = new JCETWebServicesClient.ResultMsg();
+                                            JObject oResp = null;
+                                            WebServiceResponse webServiceResp;
+
+                                            try
+                                            {
+                                                //jcetWebServiceClient = _logger;
+
+                                                webUrl = configuration["WebService:CIMAPP"] is null ? "http://scscimapp006.jcim-sg.jsg.jcetglobal.com/C10_RTD_API" : configuration["WebService:CIMAPP"];
+
+                                                jcetWebServiceClient._url = ""; //CIMAPP006 會依function自動生成url
+                                                resultMsg = new JCETWebServicesClient.ResultMsg();
+                                                apiFunc = "rtsdown";
+                                                apiFormat = configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())] is null ? "" : configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())];
+                                                resultMsg = jcetWebServiceClient.CIMAPP006("rtsdown", webUrl, apiFormat, webServiceMode, JsonJcetAlarm.EquipID, configuration["WebService:username"], configuration["WebService:password"], "lotid");
+                                                string result3 = resultMsg.retMessage;
+                                                string tmpCert = "";
+                                                string resp_Code = "";
+                                                string resp_Msg = "";
+
+                                                if (resultMsg.status)
+                                                {
+                                                    //oResp = JObject.Parse(resultMsg.retMessage);
+                                                    webServiceResp = JsonConvert.DeserializeObject<WebServiceResponse>(resultMsg.retMessage);
+                                                }
+                                                else
+                                                {
+                                                    tmpMsg = string.Format("An unknown exception occurred in the web service. Please call IT-CIM deportment. [Exception][{0}][{1}]", apiFunc, resultMsg.retMessage);
+                                                    _logger.Debug(tmpMsg);
+                                                }
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                tmpMsg = string.Format("An unknown exception occurred in the web service. Please call IT-CIM deportment. [Exception][{0}][{1}]", apiFunc, ex.Message);
+                                                _logger.Debug(tmpMsg);
+                                            }
+                                        }
+                                    }
+
+                                    if (JsonJcetAlarm.repeat)
+                                    {
+                                        tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
+                                    }
+                                    else
+                                    {
+                                        sql = _BaseDataService.UpdateRTDAlarms(true, string.Format("{0},{1},{2},{3},{4}", drTemp["UnitID"].ToString(), drTemp["Code"].ToString(), drTemp["SubCode"].ToString(), drTemp["CommandID"].ToString(), drTemp["Params"].ToString()), "");
+                                        _dbTool.SQLExec(sql, out tmpMsg, true);
+                                    }
+                                } 
+                                else
+                                {
+                                    //沒有設定的直接切換為None new 
+                                    sql = _BaseDataService.UpdateRTDAlarms(true, string.Format("{0},{1},{2},{3},{4}", drTemp["UnitID"].ToString(), drTemp["Code"].ToString(), drTemp["SubCode"].ToString(), drTemp["CommandID"].ToString(), drTemp["Params"].ToString()), "");
+                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                }
+                            }
+                            catch(Exception ex)
+                            {
+                                result = false;
+                                ErrMsg = string.Format("[{0}][{1}][{2}][{3}][{4}]", "Exception", funcName, "InForeach", idxAlarm, ex.Message);
+                            }
+
+                            if (!ErrMsg.Equals(""))
+                                _logger.Info(ErrMsg);
+                        }
+
+                        result = true;
+                    }
+                    catch(Exception ex)
+                    {
+                        result = false;
+                        ErrMsg = string.Format("[{0}][{1}][{2}][{3}]", "Exception", funcName, "Foreach",ex.Message);
+                    }
+                }
+                else
+                {
+                    result = true;
+                }
+            } catch(Exception ex)
+            {
+                result = false;
+                ErrMsg = string.Format("[{0}][{1}][{2}][{3}]", "Exception", funcName, "OutSide", ex.Message);
+            }
+
+            if(!ErrMsg.Equals(""))
+                _logger.Info(ErrMsg);
+
+            return result;
+        }
+        public bool AutoRemoveCommandWhenSentMCSFailed(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, out string tmpMessage)
+        {
+            bool bResult = false;
+            string _funcName = "AutoRemoveCommandWhenSentMCSFailed";
+            string sql = "";
+            string tmpSql = "";
+            string tmpMsg = "";
+            string _errMessage = "";
+            tmpMessage = "";
+            DataTable dt = null;
+            DataTable dt2 = null;
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
+            try
+            {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+
+                sql = _BaseDataService.QueryNoCommandStateOrderOvertime(tableOrder);
+                dt = _dbTool.GetDataTable(sql);
+
+                if (dt.Rows.Count > 0)
+                {
+                    string lotid;
+                    string carrierId;
+                    string createDT;
+                    string lastModifyDT;
+                    string commandId;
+                    string GId;
+                    string cmdType;
+                    string cmdSource;
+                    string cmdDest;
+                    foreach (DataRow dr in dt.Rows)
+                    {
+                        lotid = dr["LOTID"].ToString().Equals("") ? "" : dr["LOTID"].ToString();
+
+                        try
+                        {
+                            sql = _BaseDataService.SelectTableWorkInProcessSchByLotId(lotid, tableOrder);
+                            dt2 = _dbTool.GetDataTable(sql);
+
+                            if (dt2.Rows.Count > 0)
+                            {
+                                carrierId = "";
+                                foreach (DataRow dr2 in dt2.Rows)
+                                {
+                                    try
+                                    {
+                                        carrierId = dr2["carrierid"].ToString().Trim().Equals("") ? "" : dr2["carrierid"].ToString().Trim();
+                                        createDT = dr2["create_dt"].ToString().Trim().Equals("") ? "" : dr2["create_dt"].ToString().Trim();
+                                        lastModifyDT = dr2["lastModify_dt"].ToString().Trim().Equals("") ? "" : dr2["lastModify_dt"].ToString().Trim();
+                                        commandId = dr2["cmd_id"].ToString().Trim().Equals("") ? "" : dr2["cmd_id"].ToString().Trim();
+                                        lotid = dr2["lotid"].ToString().Trim().Equals("") ? "" : dr2["lotid"].ToString().Trim();
+                                        GId = dr2["uuid"].ToString().Trim().Equals("") ? "" : dr2["uuid"].ToString().Trim();
+                                        cmdType = dr2["cmd_type"].ToString().Trim().Equals("") ? "" : dr2["cmd_type"].ToString().Trim();
+                                        cmdSource = dr2["source"].ToString().Trim().Equals("") ? "" : dr2["source"].ToString().Trim();
+                                        cmdDest = dr2["dest"].ToString().Trim().Equals("") ? "" : dr2["dest"].ToString().Trim();
+
+                                        if (TimerTool("minutes", createDT) >= 5)
+                                        {
+                                            tmpMsg = "[{0}] dispatch overtime 5 minutes.[{1}][{2}][{3}][{4}][{5}]";
+                                            _errMessage = String.Format(tmpMsg, _funcName, GId, commandId, cmdSource, cmdDest);
+                                            _logger.Debug(_errMessage);
+
+                                            sql = _BaseDataService.UpdateTableWorkInProcessSchHisByUId(GId);
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            if (!tmpMsg.Equals(""))
+                                            {
+                                                tmpMsg = "[{0}] WorkinProcessSch Clean Failed : {1}";
+                                                _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                _logger.Debug(_errMessage);
+                                                continue;
+                                            }
+
+                                            _dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(commandId, tableOrder), out tmpMsg, true);
+
+                                            sql = _BaseDataService.DeleteWorkInProcessSchByGId(GId, tableOrder);
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                            if (!tmpMsg.Equals(""))
+                                            {
+                                                tmpMsg = "[{0}] WorkinProcessSch Clean Failed : {1}";
+                                                _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                _logger.Debug(_errMessage);
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                tmpMsg = "[{0}] Dispatch to MCS overtime. Auto Clean {1}. retry!";
+                                                _errMessage = String.Format(tmpMsg, _funcName, commandId);
+                                                _logger.Debug(_errMessage);
+                                            }
+
+                                            if (!carrierId.Equals(""))
+                                            {
+                                                sql = _BaseDataService.UpdateTableReserveCarrier(carrierId, false);
+                                                _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                                if (!tmpMsg.Equals(""))
+                                                {
+                                                    tmpMsg = "[{0}] UpdateTableReserveCarrier : {1}";
+                                                    _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                    _logger.Debug(_errMessage);
+                                                }
+                                            }
+
+                                            switch (cmdType.ToUpper())
+                                            {
+                                                case "LOAD":
+                                                    sql = _BaseDataService.LockEquipPortByPortId(cmdDest, false);
+                                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                                    if (!tmpMsg.Equals(""))
+                                                    {
+                                                        tmpMsg = "[{0}] Unlock Equipment port. {1}";
+                                                        _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                        _logger.Debug(_errMessage);
+                                                    }
+                                                    break;
+                                                case "UNLOAD":
+                                                    sql = _BaseDataService.LockEquipPortByPortId(cmdSource, false);
+                                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                                    if (!tmpMsg.Equals(""))
+                                                    {
+                                                        tmpMsg = "[{0}] Unlock Equipment port. {1}";
+                                                        _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                        _logger.Debug(_errMessage);
+                                                    }
+                                                    break;
+                                                default:
+                                                    break;
+                                            }
+                                        }
+                                        else if (TimerTool("minutes", createDT) >= 3)
+                                        {
+                                            sql = _BaseDataService.UpdateTableWorkInProcessSchHisByUId(GId);
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            if (!tmpMsg.Equals(""))
+                                            {
+                                                tmpMsg = "[{0}] WorkinProcessSch Clean Failed. {1}";
+                                                _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                _logger.Debug(_errMessage);
+                                                continue;
+                                            }
+
+                                            sql = _BaseDataService.UnlockOrderForRetry(commandId, tableOrder);
+                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                            if (!tmpMsg.Equals(""))
+                                            {
+                                                tmpMsg = "[{0}] Unlock Order Failed. {1}";
+                                                _errMessage = String.Format(tmpMsg, _funcName, tmpMsg);
+                                                _logger.Debug(_errMessage);
+                                                continue;
+                                            }
+                                            else
+                                            {
+                                                tmpMsg = "[{0}] Dispatch to MCS overtime. Auto retry [{1}]!";
+                                                _errMessage = String.Format(tmpMsg, _funcName, commandId);
+                                                _logger.Debug(_errMessage);
+                                            }
+                                        }
+
+                                    }
+                                    catch(Exception ex)
+                                    {
+                                        tmpMsg = "[{0}] Exception: Delete [{1}] Failed!";
+                                        _errMessage = String.Format(tmpMsg, _funcName, carrierId);
+                                        _logger.Debug(_errMessage);
+                                    }
+                                }
+                            }
+                        }
+                        catch(Exception ex)
+                        {
+                            //pass
+                        }
+                    }
+                    bResult = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                bResult = false;
+                tmpMsg = "[{0}] Unknow Error : {1}";
+                _errMessage = String.Format(tmpMsg, _funcName, ex.Message);
+                _logger.Debug(_errMessage);
+            }
+            finally
+            {
+                if (dt != null)
+                    dt.Dispose();
+                if (dt2 != null)
+                    dt2.Dispose();
+            }
+            dt = null;
+            dt2 = null;
+
+            return bResult;
+        }
+        public bool AutounlockportWhenNoOrder(DBTool _dbTool, IConfiguration _configuration, ILogger _logger)
+        {
+            bool bResult = false;
+            string sql = "";
+            DataTable dt;
+            DataTable dt2;
+            DataTable dtTemp;
+            string _equip = "";
+            string _portId = "";
+            string _tableOrder = "workinprocess_sch";
+            string _lastModifyDt = "";
+            string errMsg = "";
+            string _funcName = "AutounlockportWhenNoOrder";
+            string _portState = "";
+
+            try
+            {
+                //QueryFurneceEQP
+                sql = string.Format(_BaseDataService.QueryIslockPortId());
+                dt = _dbTool.GetDataTable(sql);
+
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        try
+                        {
+                            _equip = row["equipid"].ToString();
+                            _portId = row["port_id"].ToString();
+                            _lastModifyDt = row["lastModify_dt"].ToString();
+                            _portState = row["port_state"].ToString();
+
+                            dt2 = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(_equip, _portId, _tableOrder));
+                            if (dt2.Rows.Count <= 0)
+                            {
+                                //重取lastModify Dt 防止中間有command 產生
+                                sql = string.Format(_BaseDataService.SelectTableEQP_Port_SetByPortId(_portId));
+                                dtTemp = _dbTool.GetDataTable(sql);
+
+                                if (dtTemp.Rows.Count > 0)
+                                {
+                                    _lastModifyDt = dtTemp.Rows[0]["lastModify_dt"].ToString();
+                                }
+
+                                if (TimerTool("minutes", _lastModifyDt) >= 5)
+                                {
+                                    _dbTool.SQLExec(_BaseDataService.LockEquipPortByPortId(_portId, false), out errMsg, true);
+
+                                    if (!errMsg.Equals(""))
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Unlock Fail][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                    else
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Auto Unlock][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex) { }
+                    }
+                }
+            }
+            catch (Exception ex)
+            { }
+
+            return bResult;
+        }
+        public bool TransferCarrierToSideWH(DBTool _dbTool, IConfiguration _configuration, ConcurrentQueue<EventQueue> _eventQueue, ILogger _logger)
+        {
+            bool bResult = false;
+            string tmpMsg = "";
+            string sql = "";
+            DataTable dtTemp = null;
+            DataTable dtTemp2 = null;
+            DataTable dtTemp3 = null;
+            DataTable dtTemp4 = null;
+            EventQueue _eventQ = new EventQueue();
+            string funcName = "MoveCarrier";
+            string eventName = "TransferCarrierToSideWH";
+            TransferList transferList = new TransferList();
+            string tableName = "";
+            string tableOrder = "";
+            string carrierId = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
+            string _targetpoint = "";
+            string _currentLocate = "";
+            string _destStage = "";
+            string _eqpWorkgroup = "";
+            string _lotID = "";
+            string _adsTable = "";
+
+            string _adsStage = "";
+            string _adsPkg = "";
+            string _sideWarehouse = "";
+            string _sector = "";
+            string[] _sectorlist;
+
+            int _processQty = 0;
+            int _loadportQty = 0;
+            int _pretransferNow = 0;
+            int _preparecarrierForSideWH = 0;
+            int _preparesettingforSideWh = 0;
+            bool isFurnace = false;
+            string _lotStage = "";
+            string _keywork = "SideWH";
+            int _calcPreransferQty = 0;
+
+            try
+            {
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _keyRTDEnv);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
+                tableName = _configuration["PreDispatchToErack:lotState:tableName"] is null ? "lot_Info" : _configuration["PreDispatchToErack:lotState:tableName"];
+
+                _adsTable = _configuration["CheckLotStage:Table"] is null ? "lot_Info" : _configuration["CheckLotStage:Table"];
+
+                if (_keyRTDEnv.ToUpper().Equals("PROD"))
+                    sql = _BaseDataService.QueryTransferListForSideWH(tableName);
+                else if (_keyRTDEnv.ToUpper().Equals("UAT"))
+                    sql = _BaseDataService.QueryTransferListForSideWH(tableName);
+                else
+                    _logger.Debug(string.Format("RTDEnvironment setting failed. current set is [{0}]", _keyRTDEnv));
+
+                dtTemp = _dbTool.GetDataTable(sql);
+
+                if (dtTemp.Rows.Count > 0)
+                {
+                    _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, funcName, dtTemp.Rows.Count));
+
+                    foreach (DataRow dr in dtTemp.Rows)
+                    {
+                        _currentLocate = dr["locate"].ToString().Equals("") ? "*" : dr["locate"].ToString();
+                        _destStage = dr["stage"].ToString().Equals("") ? "NA" : dr["stage"].ToString();
+                        _eqpWorkgroup = dr["workgroup"].ToString().Equals("") ? "NA" : dr["workgroup"].ToString();
+                        _lotStage = dr["lotstage"].ToString().Equals("") ? "NA" : dr["lotstage"].ToString();
+
+                        //isFurnace = dr["isFurnace"].ToString().Equals("1") ? true : false;
+                        ///check is lot locate in SideWarehouse
+                        /////workgroup , stage, SideWarehouse
+                        _processQty = 0;
+                        _loadportQty = 0;
+
+                        _sideWarehouse = dr["SideWarehouse"].ToString().Equals("") ? "*" : dr["SideWarehouse"].ToString();
+
+                        if (_sideWarehouse.Equals("*"))
+                            continue;
+
+                        try
+                        {
+                            _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "SideWarehouse", _sideWarehouse));
+
+                            dtTemp3 = null;
+                            sql = _BaseDataService.QueryRackByGroupID(_sideWarehouse);
+                            dtTemp3 = _dbTool.GetDataTable(sql);
+                        }
+                        catch (Exception ex) { }
+
+                        if (dtTemp3.Rows.Count > 0)
+                        {
+                            try
+                            {
+                                _targetpoint = dtTemp3.Rows[0]["erackID"].ToString();
+                                _sector = dtTemp3.Rows[0]["sector"].ToString().Replace("\"", "").Replace("}", "").Replace("{", "");
+
+                                _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, _targetpoint, _sector));
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "EXCEPTION", ex.Message));
+                            }
+                        }
+                        else
+                        {
+                            _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "QueryRackByGroupID", dtTemp3.Rows.Count));
+                            continue;
+                        }
+
+                        try
+                        {
+                            //Get setting from workgroup set
+                            sql = _BaseDataService.QueryWorkgroupSet(_eqpWorkgroup, _destStage);
+                            dtTemp3 = _dbTool.GetDataTable(sql);
+                            if (dtTemp3.Rows.Count > 0)
+                            {
+                                _preparesettingforSideWh = int.Parse(dtTemp3.Rows[0]["preparecarrierForSideWH"].ToString());
+                            }
+
+                            //calculate process qty by stage
+                            if (isFurnace)
+                            {
+                                _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "preparesettingforSideWh", _preparesettingforSideWh));
+                                //get all carrier locate 
+                                //when locate and portno are met,  +1
+                                //get all dest in workinprocess sch
+                                //when dest is _targetpoint +1
+                                int _vfcstatus = 0;
+                                string _equipment = "";
+                                string _portNo = "";
+
+                                sql = _BaseDataService.GetEqpInfoByWorkgroupStage(_eqpWorkgroup, _destStage, _lotStage);
+                                dtTemp3 = _dbTool.GetDataTable(sql);
+                                if (dtTemp3.Rows.Count > 0)
+                                {
+                                    _vfcstatus = int.Parse(dtTemp3.Rows[0]["FVCSTATUS"].ToString());
+                                    _equipment = dtTemp3.Rows[0]["EQPID"].ToString();
+
+                                    _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "_vfcstatus", _vfcstatus));
+
+                                    //sent batch checkin before
+                                    if (!_vfcstatus.Equals(0))
+                                        continue;
+
+                                    //string[] _contantSecter = 
+                                    _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "_sector", _sector));
+                                    if (!_sector.Trim().Equals(""))
+                                        _sectorlist = _sector.Split(':')[1].Split(',');
+                                    else
+                                        _sectorlist = _sector.Split(':');
+
+                                    sql = _BaseDataService.GetCarrierByLocate(_targetpoint);
+                                    dtTemp2 = _dbTool.GetDataTable(sql);
+                                    if (dtTemp2.Rows.Count > 0)
+                                    {
+                                        foreach (DataRow drCarrier in dtTemp2.Rows)
+                                        {
+                                            _portNo = drCarrier["portno"].ToString();
+
+                                            if (((IList)_sectorlist).Contains(_portNo))
+                                                _processQty++;
+                                        }
+
+                                        _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "_processQty", _processQty));
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                //side warehouse logic for normally workgroup 
+                                sql = _BaseDataService.CalculateProcessQtyByStage(_eqpWorkgroup, _destStage, _lotStage);
+                                dtTemp3 = _dbTool.GetDataTable(sql);
+                                if (dtTemp3.Rows.Count > 0)
+                                {
+                                    _processQty = int.Parse(dtTemp3.Rows[0]["processQty"].ToString());
+                                    _logger.Info(string.Format("[{0}][{1}][{2}][{3}][{4}][{5}]", _keywork, "_processQty", _processQty, _eqpWorkgroup, _destStage, _lotStage));
+                                }
+                            }
+
+                            //calculate loadport qty by stage
+                            sql = _BaseDataService.CalculateLoadportQtyByStage(_eqpWorkgroup, _destStage, _lotStage);
+                            dtTemp3 = _dbTool.GetDataTable(sql);
+                            if (dtTemp3.Rows.Count > 0)
+                            {
+                                _loadportQty = int.Parse(dtTemp3.Rows[0]["totalportqty"].ToString());
+                                _preparecarrierForSideWH = _loadportQty * _preparesettingforSideWh;
+                                _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "_loadportQty", _loadportQty));
+                                _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "_preparecarrierForSideWH", _preparecarrierForSideWH));
+                            }
+                        }
+                        catch (Exception ex) { }
+
+                        if (_processQty + _calcPreransferQty >= _preparecarrierForSideWH)
+                            continue;
+
+                        transferList = new TransferList();
+                        carrierId = "";
+
+                        carrierId = dr["carrier_ID"].ToString().Equals("") ? "*" : dr["carrier_ID"].ToString();
+
+                        sql = _BaseDataService.CheckPreTransfer(carrierId, tableOrder);
+                        dtTemp3 = _dbTool.GetDataTable(sql);
+                        if (dtTemp3.Rows.Count > 0)
+                        {
+                            _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "CheckPreTransfer", carrierId));
+                            continue;
+                        }
+
+                        _logger.Info(string.Format("[{0}][{1}][{2}]", _keywork, "Create Transfer", carrierId));
+
+                        //20240202 Add midways logic for pre-transfer
+                        _eqpWorkgroup = dr["workgroup"].ToString().Equals("") ? "" : dr["workgroup"].ToString();
+                        _lotID = dr["lot_ID"].ToString().Equals("") ? "*" : dr["lot_ID"].ToString();
+
+                        _eventQ = new EventQueue();
+                        _eventQ.EventName = funcName;
+
+                        transferList.CarrierID = carrierId;
+                        transferList.LotID = dr["lot_ID"].ToString().Equals("") ? "*" : dr["lot_ID"].ToString();
+                        transferList.Source = "*";
+                        transferList.Dest = _sideWarehouse;
+                        transferList.CommandType = "Pre-Transfer";
+                        transferList.CarrierType = dr["CarrierType"].ToString();
+
+                        try
+                        {
+                            _adsStage = "";
+                            _adsPkg = "";
+                            tmpMsg = "";
+                            dtTemp4 = null;
+                            sql = _BaseDataService.QueryDataByLot(tableName, _lotID);
+                            dtTemp4 = _dbTool.GetDataTable(sql);
+
+                            if (dtTemp4.Rows.Count > 0)
+                            {
+                                _adsStage = dtTemp4.Rows[0]["stage"].ToString();
+                                _adsPkg = dtTemp4.Rows[0]["pkgfullname"].ToString();
+
+                                //log ads information for debug 20240313
+                                tmpMsg = string.Format("[{0}][{1}][{2}][{3}][ADS: {4} / {5}]", "Pre-Transfer", transferList.LotID, transferList.CarrierID, transferList.Dest, _adsStage, _adsPkg);
+                            }
+                            else
+                            {
+                                tmpMsg = string.Format("[{0}][{1}][{2}][{3}][ADS: No Data]", "Pre-Transfer", transferList.LotID, transferList.CarrierID, transferList.Dest);
+                            }
+                            _logger.Info(tmpMsg);
+                        }
+                        catch (Exception ex)
+                        {
+                            tmpMsg = string.Format("[{0}][{1}][{2}]", "Exception", "Pre-Transfer", transferList.LotID);
+                            _logger.Info(tmpMsg);
+                        }
+
+                        tmpMsg = string.Format("[{0}][{1} / {2} / {3} / {4} / {5} / {6}]", funcName, transferList.CommandType, transferList.LotID, transferList.CarrierID, transferList.Source, transferList.Dest, transferList.CarrierType);
+                        _eventQ.EventObject = transferList;
+                        _eventQueue.Enqueue(_eventQ);
+
+                        _calcPreransferQty++;
+                    }
+                }
+
+                bResult = true;
+            }
+            catch (Exception ex)
+            {
+                _logger.Debug(string.Format("TransferCarrierToSideWH Unknow Error. [Exception: {0}]", ex.Message));
+            }
+            finally
+            {
+                if (dtTemp != null)
+                    dtTemp.Dispose();
+                if (dtTemp2 != null)
+                    dtTemp2.Dispose();
+                if (dtTemp3 != null)
+                    dtTemp3.Dispose();
+            }
+            dtTemp = null;
+            dtTemp2 = null;
+            dtTemp3 = null;
+
+            return bResult;
+        }
+        public EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, EQPLastWaferTime _lastWaferTime)
+        {
+            bool bResult = false;
+            string sql = "";
+            DataTable dt;
+            DataTable dt2;
+            DataTable dtTemp;
+            string _equip = "";
+            string _portId = "";
+            string _tableOrder = "workinprocess_sch";
+            string _lastModifyDt = "";
+            string errMsg = "";
+            string _funcName = "GetLastWaferTimeByEQP";
+            string _portState = "";
+
+            try
+            {
+                _lastWaferTime.Hours = 0;
+                _lastWaferTime.Minutes = 0;
+
+                //QueryFurneceEQP
+                /*
+                sql = string.Format(_BaseDataService.QueryIslockPortId());
+                dt = _dbTool.GetDataTable(sql);
+
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        try
+                        {
+                            _equip = row["equipid"].ToString();
+                            _portId = row["port_id"].ToString();
+                            _lastModifyDt = row["lastModify_dt"].ToString();
+                            _portState = row["port_state"].ToString();
+
+                            dt2 = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(_equip, _portId, _tableOrder));
+                            if (dt2.Rows.Count <= 0)
+                            {
+                                //重取lastModify Dt 防止中間有command 產生
+                                sql = string.Format(_BaseDataService.SelectTableEQP_Port_SetByPortId(_portId));
+                                dtTemp = _dbTool.GetDataTable(sql);
+
+                                if (dtTemp.Rows.Count > 0)
+                                {
+                                    _lastModifyDt = dtTemp.Rows[0]["lastModify_dt"].ToString();
+                                }
+
+                                if (TimerTool("minutes", _lastModifyDt) >= 5)
+                                {
+                                    _dbTool.SQLExec(_BaseDataService.LockEquipPortByPortId(_portId, false), out errMsg, true);
+
+                                    if (!errMsg.Equals(""))
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Unlock Fail][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                    else
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Auto Unlock][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex) { }
+                    }
+                }
+                */
+            }
+            catch (Exception ex)
+            { }
+
+            return _lastWaferTime;
+        }
+        public string TryConvertDatetime(string _datetime)
+        {
+            string value = "";
+            DateTime _tmpDate;
+
+            try
+            {
+
+                DateTime.TryParse(_datetime, out _tmpDate);
+                value = _tmpDate.ToString("yyyy/MM/dd HH:mm:ss");
+            }
+            catch (Exception ex) { }
+
+            return value;
+        }
+        public string GetJArrayValue(JObject _JArray, string key)
+        {
+            string value = "";
+            //foreach (JToken item in _JArray.Children())
+            //{
+            //var itemProperties = item.Children<JProperty>();
+            //If the property name is equal to key, we get the value
+            //var myElement = itemProperties.FirstOrDefault(x => x.Name == key.ToString());
+            //value = myElement.Value.ToString(); //It run into an exception here because myElement is null
+            //break;
+            //}
+            try
+            {
+                if (_JArray.TryGetValue(key, out JToken makeToken))
+                {
+                    value = (string)makeToken;
+                }
+            }
+            catch (Exception ex) { }
+
+            return value;
+        }
+        public bool CheckMCSStatus(DBTool _dbTool, ILogger _logger)
+        {
+            bool bResult = false;
+            string sql = "";
+            DataTable dt;
+            DataTable dt2;
+            DataTable dtTemp;
+            bool _bMCSStatus = false;
+            string _strLastDatetime;
+            string _errMsg = "";
+            string _funcName = "CheckMCSStatus";
+
+            try
+            {
+
+                //QueryFurneceEQP
+                
+                sql = _BaseDataService.QueryMCSStatus("mcsstate");
+                dt = _dbTool.GetDataTable(sql);
+                
+                if (dt.Rows.Count > 0)
+                {
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        try
+                        {
+                            _bMCSStatus = row["paramvalue"].ToString().Equals("1") ? true :false;
+                            _strLastDatetime = row["lastModify_dt"].ToString();
+
+                            if(_bMCSStatus)
+                            {
+                                //send command to mcs
+                            }
+                            else
+                            {
+                                //大於1分鐘, 再嘗試送
+                                if (TimerTool("minutes", _strLastDatetime) >= 1)
+                                {
+                                    sql = _BaseDataService.ChangeMCSStatus("mcsstate", true);
+                                    _dbTool.SQLExec(sql, out _errMsg, true);
+
+                                    _logger.Info(string.Format("[{0}][{1}][{2}][{3}]", _funcName, "mcsstate", _strLastDatetime, "1 minutes"));
+                                }
+                            }
+                        }
+                        catch (Exception ex) { }
+                    }
+                }
+                
+            }
+            catch (Exception ex)
+            { }
+
+            return _bMCSStatus;
+        }
+
     }
 }

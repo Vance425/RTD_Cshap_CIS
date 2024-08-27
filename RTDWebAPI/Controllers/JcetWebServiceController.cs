@@ -29,12 +29,23 @@ namespace RTDWebAPI.Controllers
         private readonly IConfiguration _configuration;
         private readonly DBTool _dbTool;
         IFunctionService _functionService;
+        private readonly List<DBTool> _lstDBSession;
 
-        public JcetWebServiceController(ILogger logger, IConfiguration configuration, DBTool dbTool)
+        public JcetWebServiceController(ILogger logger, IConfiguration configuration, List<DBTool> lstDBSession)
         {
             _logger = logger;
             _configuration = configuration;
-            _dbTool = dbTool;
+            //_dbTool = dbTool; 
+            _lstDBSession = lstDBSession;
+
+            for (int idb = 0; idb < _lstDBSession.Count; idb++)
+            {
+                _dbTool = _lstDBSession[idb];
+                if (_dbTool.IsConnected)
+                {
+                    break;
+                }
+            }
         }
 
         [HttpPost ("_TPQuery_CheckPROMISLogin")]

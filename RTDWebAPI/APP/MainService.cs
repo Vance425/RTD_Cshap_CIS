@@ -40,6 +40,7 @@ namespace RTDWebAPI.APP
                         evtLogicService._configuration = _configuration;
                         evtLogicService._listDBSession = _listDBSession;
                         evtLogicService._uiDataCatch = _uiDataCatch;
+                        evtLogicService._alarmDetail = _alarmDetail;
 
                         Task taskEvtLogicService = Task.Run(() =>
                         {

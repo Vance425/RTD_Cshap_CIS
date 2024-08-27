@@ -1,4 +1,6 @@
-﻿using System;
+﻿using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
 
 namespace RTDWebAPI.Models
 {
@@ -9,6 +11,7 @@ namespace RTDWebAPI.Models
         public int ErrorCode { get; internal set; }
         public string Message { get; internal set; }
         public object objContent { get; internal set; }
+        public JObject Data { get; set; }
 
 
         /// <summary>
@@ -68,6 +71,10 @@ namespace RTDWebAPI.Models
                 if (objContent != null)
                 {
                     objContent = null;
+                }
+                if (Data != null)
+                {
+                    Data = null;
                 }
             }
             //清理非托管资源

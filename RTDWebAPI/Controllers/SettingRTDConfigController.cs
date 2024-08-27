@@ -30,12 +30,23 @@ namespace RTDWebAPI.Controllers
         private readonly ILogger _logger;
         private readonly DBTool _dbTool;
         private readonly IConfiguration _configuration;
+        private readonly List<DBTool> _lstDBSession;
 
-        public SettingRTDConfigController(ILogger logger, DBTool dbTool, IConfiguration configuration)
+        public SettingRTDConfigController(ILogger logger, List<DBTool> lstDBSession, IConfiguration configuration)
         {
             _logger = logger;
-            _dbTool = dbTool;
+            //_dbTool = dbTool;
             _configuration = configuration;
+            _lstDBSession = lstDBSession;
+
+            for (int idb = 0; idb < _lstDBSession.Count; idb++)
+            {
+                _dbTool = _lstDBSession[idb];
+                if (_dbTool.IsConnected)
+                {
+                    break;
+                }
+            }
         }
 
         [HttpPost("SetEquipmentPortModel")]
@@ -56,7 +67,7 @@ namespace RTDWebAPI.Controllers
                 if (value.Equipment.Equals(""))
                 {
                     //_dbTool.SQLExec(_BaseDataService.UpdateRtdAlarm(value.DateTime), out tmpMsg, true);
-                    tmpMsg = "Equipment can not be empty. please check!";
+                    tmpMsg = "Equipment can not be please check!";
                     foo = new APIResult()
                     {
                         Success = false,
@@ -1018,6 +1029,374 @@ namespace RTDWebAPI.Controllers
             }
 
             return foo;
+        }
+        public class ClassSetUatCarrier
+        {
+            public string CarrierID { get; set; }
+            public bool Set { get; set; }
+        }
+
+        [HttpPost("SetUatCarrier")]
+        public APIResult SetUatCarrier([FromBody] ClassSetUatCarrier value)
+        {
+            APIResult foo;
+            string funcName = "SetUatCarrier";
+            string tmpMsg = "";
+            DataTable dt = null;
+            DataRow[] dr = null;
+            string sql = "";
+            IBaseDataService _BaseDataService = new BaseDataService();
+            Boolean _isuat = false;
+
+            try
+            {
+                //// 查詢資料
+                dt = _dbTool.GetDataTable(_BaseDataService.QueryCarrierByCarrierId(value.CarrierID));
+
+                if (dt.Rows.Count > 0)
+                {
+                    _isuat = dt.Rows[0]["uat"].ToString().Equals("0") ? false : true;
+
+                    if (!_isuat.Equals(value.Set))
+                    {
+                        sql = _BaseDataService.UpdateCarrierToUAT(value.CarrierID, value.Set);
+                        _dbTool.SQLExec(sql, out tmpMsg, true);
+                    }
+                }
+
+                if (tmpMsg.Equals(""))
+                {
+                    foo = new APIResult()
+                    {
+                        Success = true,
+                        State = "OK",
+                        Message = tmpMsg
+                    };
+                }
+                else
+                {
+                    foo = new APIResult()
+                    {
+                        Success = false,
+                        State = "NG",
+                        Message = tmpMsg
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                foo = new APIResult()
+                {
+                    Success = false,
+                    State = "NG",
+                    Message = ex.Message
+                };
+            }
+            finally
+            {
+                if (dt is not null)
+                {
+                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
+                }
+            }
+
+            return foo;
+        }
+
+
+        [HttpPost("ResetProrityForWorkroupSet")]
+        public APIResult ResetProrityForWorkroupSet([FromBody] ClassStagePriorityWorkgroupSet value)
+        {
+            APIResult foo;
+            string funcName = "ResetProrityForWorkroupSet";
+            string tmpMsg = "";
+            DataTable dt = null;
+            DataRow[] dr = null;
+            string sql;
+            DateTime dtLimit;
+            IBaseDataService _BaseDataService = new BaseDataService();
+            string WorkgroupID = "";
+            string StageID = "";
+            int Current_Priority = 0;
+
+            try
+            {
+                foo = new APIResult()
+                {
+                    Success = false,
+                    State = "NG",
+                    Message = tmpMsg
+                };
+
+                if (value.Workgroup.Equals(""))
+                {
+                    //_dbTool.SQLExec(_BaseDataService.UpdateRtdAlarm(value.DateTime), out tmpMsg, true);
+                    tmpMsg = "Workgroup can not be empty. please check.";
+
+                    foo = new APIResult()
+                    {
+                        Success = false,
+                        State = "NG",
+                        Message = tmpMsg
+                    };
+
+                    return foo;
+                }
+                else
+                {
+                    dt = _dbTool.GetDataTable(_BaseDataService.QueryWorkgroupSet(value.Workgroup, value.Stage));
+
+                    if (dt.Rows.Count <= 0)
+                    {
+                        tmpMsg = string.Format("Stage [{0}] not exist.. please check.", value.Stage);
+
+                        foo = new APIResult()
+                        {
+                            Success = false,
+                            State = "NG",
+                            Message = tmpMsg
+                        };
+
+                        return foo;
+                    }
+                    else
+                    {
+                        if (!dt.Rows[0]["Workgroup"].ToString().Equals(""))
+                            WorkgroupID = dt.Rows[0]["Workgroup"].ToString().Equals("") ? "" : dt.Rows[0]["Workgroup"].ToString();
+
+                        if (!dt.Rows[0]["Stage"].ToString().Equals(""))
+                            StageID = dt.Rows[0]["Stage"].ToString().Equals("") ? "" : dt.Rows[0]["Stage"].ToString();
+                    }
+                }
+
+                dt = _dbTool.GetDataTable(_BaseDataService.QueryWorkgroupSet(WorkgroupID, StageID));
+
+                if (dt.Rows.Count > 0)
+                {
+                    Current_Priority = int.Parse(dt.Rows[0]["prority"].ToString());
+
+                    if (!value.Priority.Equals(Current_Priority))
+                    {
+                        sql = String.Format(_BaseDataService.UpdatePriorityForWorkgroupSet(WorkgroupID, StageID, value.Priority));
+                        _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                        if (tmpMsg.Equals(""))
+                        {
+                            foo = new APIResult()
+                            {
+                                Success = true,
+                                State = "OK",
+                                Message = tmpMsg
+                            };
+                        }
+                        else
+                        {
+                            tmpMsg = string.Format("[{0}] Workgroup update Issue. Workgroup [{1}] stage [{2}] Priority [{3}]. please check.", funcName, WorkgroupID, StageID, value.Priority);
+                            foo = new APIResult()
+                            {
+                                Success = false,
+                                State = "NG",
+                                Message = tmpMsg
+                            };
+                        }
+                    }
+                }
+                else
+                {
+                    tmpMsg = string.Format("[{0}] Workgroup Error. Workgroup [{1}] not exist.", funcName, WorkgroupID);
+                    foo = new APIResult()
+                    {
+                        Success = false,
+                        State = "NG",
+                        Message = tmpMsg
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                foo = new APIResult()
+                {
+                    Success = true,
+                    State = "NG",
+                    Message = ex.Message
+                };
+            }
+            finally
+            {
+                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
+                if (dt is not null)
+                {
+                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
+                }
+            }
+
+            if (!tmpMsg.Equals(""))
+                _logger.Debug(tmpMsg);
+
+            return foo;
+        }
+        public class ClassStagePriorityWorkgroupSet
+        {
+            public string Workgroup { get; set; }
+            public string Stage { get; set; }
+            public int Priority { get; set; }
+        }
+        [HttpPost("SetUseFailErack")]
+        public APIResult SetUseFailErack([FromBody] ClassWorkgroup2 value)
+        {
+            APIResult foo;
+            string funcName = "SetUseFailErack";
+            string tmpMsg = "";
+            string tmp2Msg = "";
+            DataTable dt = null;
+            DataTable dtTemp = null;
+            DataRow[] dr = null;
+            string sql = "";
+            string tmpKey = "";
+            string _stage = "";
+            string _userID = "";
+            string resultMsg = "";
+            string _paramsName = "";
+
+            IBaseDataService _BaseDataService = new BaseDataService();
+
+            try
+            {
+                _paramsName = "USEFAILERACK";
+
+                _userID = value.UserID.Equals("") ? "-----" : value.UserID;
+
+                dt = _dbTool.GetDataTable(_BaseDataService.QueryWorkgroupSet(value.Workgroup));
+
+                if (dt.Rows.Count > 0)
+                {
+                    Boolean enableFunction = false;
+
+                    if (!value.Stage.Equals(""))
+                        tmpKey = string.Format("stage='{0}'", value.Stage);
+
+                    if (!tmpKey.Equals(""))
+                    {
+                        dr = dt.Select(tmpKey);
+
+                        if (dr.Length > 0)
+                        {
+                            tmp2Msg = "{" + string.Format(@"'{0}':'{1}', 'UserID':'{2}'", value.Stage, dr[0][_paramsName].ToString(), _userID) + "}";
+                            //iPreTransMode = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
+                            enableFunction = dr[0][_paramsName].ToString().Equals("1") ? true : false;
+                            _stage = value.Stage;
+                        }
+                        else
+                        {
+                            tmpMsg = string.Format("Stage {0} not exist.", value.Stage);
+                        }
+                    }
+                    else
+                    {
+                        string tmpStage = "";
+                        string lstStage = "";
+
+                        foreach (DataRow drTemp in dt.Rows)
+                        {
+                            tmpStage = string.Format(@"'{0}':'{1}'", drTemp["stage"].ToString(), drTemp[_paramsName].ToString());
+
+                            if (lstStage.Equals(""))
+                                lstStage = tmpStage;
+                            else
+                                lstStage = string.Format("{0}, {1}", lstStage, tmpStage);
+                        }
+
+                        tmp2Msg = "{" + string.Format(@"{0}, 'UserID':'{1}'", lstStage, _userID) + "}";
+
+                        enableFunction = dt.Rows[0][_paramsName].ToString().Equals("1") ? true : false;
+                        _stage = "";
+                    }
+
+                    if (enableFunction)
+                    {
+                        if (value.Set.Equals(0))
+                        {
+                            _logger.Info(tmp2Msg);
+                            //// 更新狀態
+                            _dbTool.SQLExec(_BaseDataService.SetResetParams(value.Workgroup, value.Stage, _paramsName, false), out tmpMsg, true);
+                            _logger.Debug(tmpMsg);
+                        }
+                        else
+                            resultMsg = "No Changed";
+                    }
+                    else
+                    {
+                        if (value.Set.Equals(1))
+                        {
+                            _logger.Info(tmp2Msg);
+                            //// 更新狀態
+                            _dbTool.SQLExec(_BaseDataService.SetResetParams(value.Workgroup, value.Stage, _paramsName, true), out tmpMsg, true);
+                            _logger.Debug(tmpMsg);
+                        }
+                        else
+                            resultMsg = "No Changed";
+                    }
+                }
+                else
+                {
+                    tmpMsg = string.Format("Workgroup {0} not exist.", value.Workgroup);
+                }
+
+                if (tmpMsg.Equals(""))
+                {
+                    if (resultMsg.Equals(""))
+                        tmp2Msg = string.Format("Set use fail eRack success. [{0}][{1}] by [{2}]", value.Workgroup, _stage, _userID);
+                    else
+                        tmp2Msg = string.Format("Set use fail eRack success. {0} [{1}][{2}] by [{3}]", resultMsg, value.Workgroup, _stage, _userID);
+
+                    _logger.Info(tmp2Msg);
+
+                    foo = new APIResult()
+                    {
+                        Success = true,
+                        State = "OK",
+                        Message = tmpMsg
+                    };
+                }
+                else
+                {
+                    tmp2Msg = string.Format("Set use fail eRack failed. [{0}][{1}] by [{2}]", value.Workgroup, _stage, _userID);
+                    _logger.Info(tmp2Msg);
+
+                    foo = new APIResult()
+                    {
+                        Success = false,
+                        State = "NG",
+                        Message = tmpMsg
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                foo = new APIResult()
+                {
+                    Success = true,
+                    State = "NG",
+                    Message = ex.Message
+                };
+            }
+            finally
+            {
+                //_logger.LogInformation(string.Format("Info :{0}", value.CarrierID));
+                if (dt is not null)
+                {
+                    dt.Clear(); dt.Dispose(); dt = null; dr = null;
+                }
+            }
+
+            return foo;
+        }
+        public class ClassWorkgroup2
+        {
+            public string Workgroup { get; set; }
+            public string Stage { get; set; }
+            public int Set { get; set; }
+            public string UserID { get; set; }
         }
     }
 }

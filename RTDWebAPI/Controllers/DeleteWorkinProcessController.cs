@@ -28,14 +28,25 @@ namespace RTDWebAPI.Controllers
         private readonly ILogger _logger;
         private readonly DBTool _dbTool;
         private readonly ConcurrentQueue<EventQueue> _eventQueue;
+        private readonly List<DBTool> _lstDBSession;
 
         public DeleteWorkinProcessController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
         {
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
-            _dbTool = (DBTool)lstDBSession[0];
+            //_dbTool = (DBTool)lstDBSession[0];
             _eventQueue = eventQueue;
+            _lstDBSession = lstDBSession;
+
+            for (int idb = 0; idb < _lstDBSession.Count; idb++)
+            {
+                _dbTool = _lstDBSession[idb];
+                if (_dbTool.IsConnected)
+                {
+                    break;
+                }
+            }
         }
 
         [HttpPost]
@@ -54,11 +65,20 @@ namespace RTDWebAPI.Controllers
             string sql = "";
             string lotid = "";
 
+            string tableOrder = "";
+            string _keyOfEnv = "";
+            string _keyRTDEnv = "";
+
             try
             {
                 var jsonStringName = new JavaScriptSerializer();
                 var jsonStringResult = jsonStringName.Serialize(value);
                 _logger.Info(string.Format("Function:[{0}], WorkinProcess:{1}", funcName, jsonStringResult));
+
+                _keyRTDEnv = _configuration["RTDEnvironment:type"];
+                _keyOfEnv = string.Format("RTDEnvironment:commandsTable:{0}", _configuration["RTDEnvironment:type"]);
+                //"RTDEnvironment:commandsTable:PROD"
+                tableOrder = _configuration[_keyOfEnv] is null ? "workinprocess_sch" : _configuration[_keyOfEnv];
 
                 CommandId = value.CommandID;
                 if (CommandId.Equals(""))
@@ -79,7 +99,7 @@ namespace RTDWebAPI.Controllers
                 }
                 */
                 // 查詢Lot資料
-                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByCmdId(CommandId));
+                sql = string.Format(_BaseDataService.SelectTableWorkInProcessSchByCmdId(CommandId, tableOrder));
                 dt = _dbTool.GetDataTable(sql);
                 dr = dt.Select();
 
@@ -141,8 +161,8 @@ namespace RTDWebAPI.Controllers
                     if (apiResult.Success)
                     {
                         // 更新狀態資料
-                        string CurrentTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
-                        if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("DELETE", CurrentTime, CommandId), out tmpMsg, true))
+                        string CurrentTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                        if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchByCmdId("DELETE", CurrentTime, CommandId, tableOrder), out tmpMsg, true))
                         {
                             if (_dbTool.SQLExec(_BaseDataService.UpdateTableWorkInProcessSchHisByCmdId(CommandId), out tmpMsg, true))
                             {
@@ -157,7 +177,7 @@ namespace RTDWebAPI.Controllers
                                     }
                                 }
 
-                                if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId), out tmpMsg, true))
+                                if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId, tableOrder), out tmpMsg, true))
                                 {
                                     //Do Nothing
                                     foo.Success = true;
@@ -189,6 +209,17 @@ namespace RTDWebAPI.Controllers
                     else
                     {
                         foo = apiResult;
+
+                        if(foo.Message.Contains("InternalServerError"))
+                        {
+                            if (_dbTool.SQLExec(_BaseDataService.DeleteWorkInProcessSchByCmdId(CommandId, tableOrder), out tmpMsg, true))
+                            {
+                                if(tmpMsg.Equals(""))
+                                    tmpMsg = string.Format("Remove command failed {0}, Just delete RTD order.", CommandId);
+
+                                _logger.Debug(tmpMsg);
+                            }
+                        }
                     }
                 }
                 else

@@ -4,6 +4,9 @@ using System.Text;
 using System.Data;
 using System.Data.Common;
 using System.Threading;
+using NLog;
+using NLog.Targets;
+using NLog.Config;
 
 namespace RTDWebAPI.Commons.Method.Database
 {
@@ -64,6 +67,9 @@ namespace RTDWebAPI.Commons.Method.Database
 
 
         public DBPool dbPool = null;
+
+        //ILogger _dblogger = LogManager.GetCurrentClassLogger();
+        public ILogger _dblogger { get; set; }
 
         #endregion
 
@@ -138,6 +144,8 @@ namespace RTDWebAPI.Commons.Method.Database
         /// <param name="iDBProvider"></param>
         public DBTool(string iConnString, string iDBProvider, string autoDisconn, out string msg)
         {
+            //CreateDBLogger();
+
             strDBConnString = iConnString;
             strDBProvider = iDBProvider;
             if (iDBProvider.IndexOf("Oracle") > -1)
@@ -160,7 +168,7 @@ namespace RTDWebAPI.Commons.Method.Database
                 throw new Exception("No Support DB Type");
             }
 
-            if(!autoDisconn.Equals(""))
+            if (!autoDisconn.Equals(""))
             {
                 bAutoDisConn = autoDisconn.ToUpper().Equals("TRUE") ? true : false;
             }
@@ -304,7 +312,7 @@ namespace RTDWebAPI.Commons.Method.Database
         public List<int> GetSeqBySeqName(string SeqName, int num = 1)
         {
             List<int> lsSeq = new List<int>();
-            string sqlSelect = "SELECT LEVEL,{0}  AS NEXTVAL FROM DUAL CONNECT BY LEVEL<={1}";
+            string sqlSelect = "SELECT LEVEL,{0} AS NEXTVAL FROM DUAL CONNECT BY LEVEL<={1}";
             sqlSelect = string.Format(@sqlSelect, SeqName + ".NEXTVAL", num);
             DataTable dt = new DataTable();
             dt = dbPool.GetDataTable(sqlSelect, bAutoDisConn);
@@ -333,14 +341,20 @@ namespace RTDWebAPI.Commons.Method.Database
 
         public DataTable GetDataTable(string sql)
         {
+            dbPool.logger = _dblogger;
+            if (sql.Trim().Equals(""))
+                return new DataTable();
+
             return dbPool.GetDataTable(sql, bAutoDisConn);
         }
         public DataTable GetDataTable(string sql, bool autoDisconn)
         {
+            dbPool.logger = _dblogger;
             return dbPool.GetDataTable(sql, autoDisconn);
         }
         public DataTable GetDataTable(string sql, string name)
         {
+            dbPool.logger = _dblogger;
             return dbPool.GetDataTable(sql, name);
         }
         /// <summary>
@@ -416,6 +430,7 @@ namespace RTDWebAPI.Commons.Method.Database
         /// <param name="commit">True：Commit 但不關閉連接</param>
         public bool SQLExec(List<string> listSql, out string errMsg, bool commit = true)
         {
+            dbPool.logger = _dblogger;
             return dbPool.SQLExec(listSql, out errMsg, commit);
         }
 
@@ -437,11 +452,26 @@ namespace RTDWebAPI.Commons.Method.Database
             {
                 try
                 {
-                    bExec = SQLExec(sqlList, out errMsg, commit);
+                    if (sql.Trim().Equals(""))
+                    {
+                        errMsg = "sql sentence can not emty.";
+                        return bExec;
+                    }
 
+                    if (execTime > 0)
+                    {
+                        tmpMsg = string.Format("retry do SQLExec logic, retry time: [{0}][{1}]", execTime, sql);
+                        _dblogger.Error(tmpMsg);
+                    }
+
+                    bExec = SQLExec(sqlList, out errMsg, commit);
                 }
                 catch (Exception ex)
                 {
+                    tmpMsg = string.Format("[{0}][{1}][{2}][{3}]", "DBAccess", "SQLExec", ex.Message, sql);
+                    if(_dblogger is not null)
+                        _dblogger.Error(tmpMsg);
+
                     tmpMsg = "";
                     if (ex.Message.IndexOf("ORA-03150") > 0 || ex.Message.IndexOf("ORA-02063") > 0 || ex.Message.IndexOf("ORA-12614") > 0
                         || ex.Message.IndexOf("Object reference not set to an instance of an object") > 0
@@ -451,8 +481,16 @@ namespace RTDWebAPI.Commons.Method.Database
                         //ReConnectDB(out tmpMsg);
                         //if (!tmpMsg.Equals(""))
                         //    tmpMsg = string.Format("[, ReConnection:{0}]", tmpMsg);
+                        tmpMsg = string.Format("do SQLExec happened some issue. [{0}]", ex.Message);
+                        _dblogger.Error(tmpMsg);
 
-                        tmpMsg = string.Format("Database access problem. SQLExec fail.");
+                        DisConnectDB(out tmpMsg);
+                        if (!tmpMsg.Equals(""))
+                            _dblogger.Error(string.Format("auto dispose fail [{0}]", tmpMsg));
+                        else
+                            _dblogger.Error(string.Format("auto dispose"));
+
+                        tmpMsg = string.Format("Database access problem. SQLExec fail. [{0}]");
                     }
                     else
                     {
@@ -468,6 +506,14 @@ namespace RTDWebAPI.Commons.Method.Database
 
                     errMsg = String.Format("{0} [Exception: {1}]", tmpMsg, ex.Message);
                 }
+
+                if (errMsg.Equals(""))
+                    break;
+                else
+                {
+                    _dblogger.Info(errMsg);
+                }
+
                 if (execTime > 3)
                     break;
                 else
@@ -618,6 +664,5 @@ namespace RTDWebAPI.Commons.Method.Database
             get { return strLoginPWD; }
         }
         #endregion
-
     }
 }

@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 using NLog;
+using RTDWebAPI.Commons.Method.Database;
 using RTDWebAPI.Interface;
 using RTDWebAPI.Models;
 using System;
@@ -23,12 +24,28 @@ namespace RTDWebAPI.Controllers
         private readonly IFunctionService _functionService;
         private readonly IConfiguration _configuration;
         private readonly ILogger _logger;
+        private readonly DBTool _dbTool;
+        private readonly List<DBTool> _lstDBSession;
 
-        public SyncEquipmentStatusController(IConfiguration configuration, ILogger logger, IFunctionService functionService)
+        public SyncEquipmentStatusController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService)
         {
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
+            _dbTool = (DBTool)lstDBSession[0];
+            _logger = logger;
+            _configuration = configuration;
+            _functionService = functionService;
+            _lstDBSession = lstDBSession;
+
+            for (int idb = _lstDBSession.Count - 1; idb >= 0; idb--)
+            {
+                _dbTool = _lstDBSession[idb];
+                if (_dbTool.IsConnected)
+                {
+                    break;
+                }
+            }
         }
 
         [HttpPost]
@@ -46,7 +63,7 @@ namespace RTDWebAPI.Controllers
                 //foo = _functionService.SentCommandtoMCS(_configuration, _logger, tmpp);
                 tmpp.Add(value.PortID);
 
-                foo = _functionService.SentCommandtoMCSByModel(_configuration, _logger, "EquipmentStatusSync", tmpp);
+                foo = _functionService.SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "EquipmentStatusSync", tmpp);
             }
             catch(Exception ex)
             {
