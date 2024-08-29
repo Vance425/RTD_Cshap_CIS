@@ -76,5 +76,6 @@ namespace RTDWebAPI.Interface
         string TryConvertDatetime(string _datetime);
         string GetJArrayValue(JObject _JArray, string key);
         bool CheckMCSStatus(DBTool _dbTool, ILogger _logger);
+        bool Heartbeat(DBTool _dbTool, IConfiguration _configuration, ILogger _logger);
     }
 }

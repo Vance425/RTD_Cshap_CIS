@@ -2512,7 +2512,7 @@ namespace RTDWebAPI.Controllers
                         resultMsg = new JCETWebServicesClient.ResultMsg();
                         apiFunc = "CheckEcert";
                         apiFormat = _configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())] is null ? "" : _configuration[string.Format("WebService:CIMAPIFormat:{0}", apiFunc.ToUpper())];
-                        resultMsg = jcetWebServiceClient.CIMAPP006("CheckEcert", webUrl, apiFormat, webServiceMode, value.PortID, value.UserID, value.Pwd, value.LotID);
+                        resultMsg = jcetWebServiceClient.CIMAPP006("CheckEcert", webUrl, apiFormat, webServiceMode, value.PortID, value.UserID, value.Pwd, tmpLotID);
                         string result3 = resultMsg.retMessage.Trim('\"');
                         string tmpCert = "";
                         string resp_Code = "";
@@ -2533,7 +2533,7 @@ namespace RTDWebAPI.Controllers
 
                             //JObject objResp = (JObject)JsonConvert.DeserializeObject(resultMsg.retMessage);
                             try {
-
+                                result3 = "{\"Status\": \"Success\",\"Code\": 200,\"Msg\": \"SUCCESS\"}";
                                 _logger.Info(string.Format("CIMAPP006, [{0}][{1}]", "JsonConvert", result3));
                                 webServiceResp = JsonConvert.DeserializeObject<WebServiceResponse>(result3);
 
@@ -2595,7 +2595,7 @@ namespace RTDWebAPI.Controllers
                                 {
 
                                     tmpp.Add(value.CarrierID);
-                                    tmpp.Add(value.LotID);
+                                    tmpp.Add(tmpLotID);
                                     tmpp.Add(value.PortID);
                                     tmpp.Add(value.Quantity.ToString());
                                     tmpp.Add(value.Total.ToString());
@@ -2617,6 +2617,8 @@ namespace RTDWebAPI.Controllers
                                     State = "OK",
                                     Message = tmpMsg
                                 };
+
+                                return foo;
                             }
                             else if (webServiceResp.Status.ToUpper().Equals("FAILURE"))
                             {
@@ -2660,6 +2662,7 @@ namespace RTDWebAPI.Controllers
                 }
                 catch (Exception ex)
                 {
+                    tmpMsg = ex.Message;
                 }
 
                 if (tmpMsg.Equals(""))

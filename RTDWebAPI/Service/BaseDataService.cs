@@ -3306,5 +3306,84 @@ where a.port_id='{0}'", _portID);
 
             return strSQL;
         }
+        public string QueryRTDServer(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+            if(_server.Equals(""))
+                strWhere = string.Format(@"where parameter = 'RTDServer' and paramtype = 'MasterServer'", _server);
+            else
+                strWhere = string.Format(@"where parameter = 'RTDServer' and paramtype = 'MasterServer' and paramvalue = '{0}'", _server);
+            //select * from rtd_default_set where parameter = 'RTDServer' and paramtype = 'MasterServer';
+            //select * from rtd_default_set where parameter = 'mcsstate';
+            //strWhere = string.Format(@"where parameter = 'RTDServer' and paramtype = 'MasterServer' and paramvalue = '{0}", _server);
+
+            strSQL = string.Format(@"select * from rtd_default_set {0}", strWhere);
+
+            return strSQL;
+        }
+        public string InsertRTDServer(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+
+            strSQL = string.Format(@"insert into rtd_default_set (parameter, paramtype, paramvalue, modifyby, lastmodify_dt, description)
+values('RTDServer', 'MasterServer', '{0}', '{1}', sysdate, '{2}')", _server, "RTD", "Defined currentlly RTD Server");
+
+            return strSQL;
+        }
+        public string UadateRTDServer(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+
+            strSet = string.Format(@"set paramvalue = '{0}'", _server);
+            strWhere = string.Format(@"where parameter = 'RTDServer' and paramtype = 'MasterServer'");
+
+            strSQL = string.Format(@"update rtd_default_set {0} {1}", strSet, strWhere);
+
+            return strSQL;
+        }
+        public string QueryResponseTime(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+            //select to_char(lastmodify_dt, 'yyyy/MM/dd HH24:mi:ss') as responseTime from rtd_default_set where parameter = 'ResponseTime' and paramvalue = 'Server1';
+            strWhere = string.Format(@"where parameter = 'ResponseTime' and paramvalue = '{0}'", _server);
+
+            strSQL = string.Format(@"select to_char(lastmodify_dt, 'yyyy/MM/dd HH24:mi:ss') as responseTime from rtd_default_set {0}", strWhere);
+
+            return strSQL;
+        }
+        public string InsertResponseTime(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+
+            strSQL = string.Format(@"insert into rtd_default_set (parameter, paramtype, paramvalue, modifyby, lastmodify_dt, description)
+values('ResponseTime', 'ResponseTime', '{0}', 'RTD', sysdate, 'RTD server response time')", _server);
+
+            return strSQL;
+        }
+        public string UadateResponseTime(string _server)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+
+            strSet = string.Format(@"set lastmodify_dt = sysdate");
+            strWhere = string.Format(@"where parameter = 'ResponseTime' and paramvalue = '{0}'", _server);
+
+            strSQL = string.Format(@"update rtd_default_set {0} {1}", strSet, strWhere);
+
+            return strSQL;
+        }
     }
 }

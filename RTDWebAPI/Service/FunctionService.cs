@@ -11705,5 +11705,33 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
             return _bMCSStatus;
         }
 
+        public bool Heartbeat(DBTool _dbTool, IConfiguration _configuration, ILogger _logger)
+        {
+            bool bResult = false;
+            string _sql = "";
+            DataTable dt;
+            DataTable dtTemp;
+            DataTable dtTemp2;
+            bool _bHeartbeat = false;
+            string _responseTime;
+            string _errMsg = "";
+            string tmpMsg = "";
+            string _funcName = "Heartbeat";
+            string RTDServerName = "";
+
+            try
+            {
+                RTDServerName = _configuration["AppSettings:Server"] is not null ? _configuration["AppSettings:Server"] : "RTDServer";
+                _sql = _BaseDataService.UadateRTDServer(RTDServerName);
+                _dbTool.SQLExec(_sql, out tmpMsg, true);
+
+                if(tmpMsg.Equals(""))
+                    _bHeartbeat = true;
+            }
+            catch (Exception ex)
+            { _bHeartbeat = false; }
+
+            return _bHeartbeat;
+        }
     }
 }

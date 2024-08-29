@@ -268,5 +268,11 @@ namespace RTDWebAPI.Interface
         string QueryPortInfobyPortID(string _portID); 
         string QueryMCSStatus(string _parameter);
         string ChangeMCSStatus(string _parameter, bool _bstate);
+        string QueryRTDServer(string _server);
+        string InsertRTDServer(string _server);
+        string UadateRTDServer(string _server);
+        string QueryResponseTime(string _server);
+        string InsertResponseTime(string _server);
+        string UadateResponseTime(string _server);
     }
 }
