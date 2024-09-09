@@ -36,7 +36,6 @@ namespace RTDWebAPI.Controllers
 
         public LoginController(ILogger logger, IConfiguration configuration, List<DBTool> lstDBSession)
         {
-            string tmpMsg = "";
             _logger = logger;
             _configuration = configuration;
             //_dbTool = dbTool;
@@ -50,10 +49,6 @@ namespace RTDWebAPI.Controllers
                     break;
                 }
             }
-
-            tmpMsg = string.Format("{2} UI API, Function[{0}], Thread ID [{1}]", "GetUIDataController", Thread.CurrentThread.ManagedThreadId, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
-            Console.WriteLine(tmpMsg);
-            _logger.Info(tmpMsg);
         }
 
         [HttpPost]

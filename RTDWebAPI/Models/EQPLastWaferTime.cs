@@ -7,9 +7,8 @@ namespace RTDWebAPI.Models
         public string EquipID { get; set; }
         public string PortID { get; set; }
         public string RecipeID { get; set; }
-        public string LotID { get; set; }
-        public float Hours { get; set; }
-        public float Minutes { get; set; }
-        public float Seconds { get; set; }
+        public int Hours { get; set; }
+        public int Minutes { get; set; }
+        public int Seconds { get; set; }
     }
 }

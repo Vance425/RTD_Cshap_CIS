@@ -2117,11 +2117,7 @@ namespace RTDWebAPI.Service
                         var gizmo = JObject.Parse(strGizmo);
                         _logger.Info(string.Format("Send Command by JObject.Parse.[{0}]", gizmo.ToString()));
 
-#if DEBUG
-//Do Nothing
-#else
                         response = client.PostAsJsonAsync(remoteCmd, gizmo).Result;
-#endif
 
                         tmpMsg = string.Format("MCS response is [{0}] [{1}]", response.IsSuccessStatusCode.ToString(), response.Content.ToString());
                         _logger.Info(tmpMsg);
@@ -2136,12 +2132,8 @@ namespace RTDWebAPI.Service
                             _tmpConvert = true;
                             string sGizmo = JsonConvert.SerializeObject(strGizmo);
 
-#if DEBUG
-//Do Nothing
-#else
                             response = client.PostAsJsonAsync(remoteCmd, sGizmo).Result;
                             _logger.Info(string.Format("Send Command by JsonConvert.SerializeObject.[{0}]", sGizmo));
-#endif
                         }
                     }
                     catch (Exception ex) { _tmpConvert = false; }
@@ -2151,11 +2143,7 @@ namespace RTDWebAPI.Service
                         _tmpConvert = true;
                         _logger.Info(string.Format("Send Command by JsonSerializer.Serialize<ManualCheckIn>.[{0}]", strGizmo));
 
-#if DEBUG
-//Do Nothing
-#else
                         response = client.PostAsJsonAsync(remoteCmd, strGizmo).Result;
-#endif
                     }
                 }
 
@@ -2489,7 +2477,7 @@ namespace RTDWebAPI.Service
 #if DEBUG
                 //_logger.Info(string.Format("Info:{0}", tmpMsg));
 #else
-#endif
+#endif 
 
                 if (resultMsg.status)
                 {
@@ -6575,7 +6563,6 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
                         bool isSwap = false;
                         string _lastDest = "";
                         int idxTrans = 0;
-                        string _tmplotid = "";
                         DateTime dtStart = DateTime.Now;
                         foreach (TransferList trans in normalTransfer.Transfer)
                         {
@@ -6741,6 +6728,30 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
                             if (workinProcessSch.Cmd_Id.Equals(""))
                                 dtStart = DateTime.Now;
 
+                            if (trans.CommandState.Equals("NearComp"))
+                            {
+                                _oLastWaferTime = new EQPLastWaferTime();
+                                workinProcessSch.Cmd_Current_State = trans.CommandState is null ? "" : trans.CommandState;
+
+                                //取得機台的時間
+                                int iHours = 0;
+                                int iMinutes = 0;
+
+                                //iHours = 1;
+                                //iMinutes = 32;
+                                //EQPLastWaferTime
+                                //_oLastWaferTime
+                                _oLastWaferTime = GetLastWaferTimeByEQP(_dbTool, configuration, _logger, _oLastWaferTime);
+
+
+                                workinProcessSch.Start_Dt = dtStart.AddHours(_oLastWaferTime.Hours).AddMinutes(_oLastWaferTime.Minutes);
+                            }
+                            else
+                            {
+                                workinProcessSch.Cmd_Current_State = "";
+                                workinProcessSch.Start_Dt = dtStart;
+                            }
+
                             DataTable dtInfo = new DataTable { };
                             if (trans.CarrierID is not null)
                             {
@@ -6757,29 +6768,6 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
                             {
                                 workinProcessSch.LotID = " ";
                                 workinProcessSch.Customer = " ";
-                            }
-
-                            if (trans.CommandState.Equals("NearComp"))
-                            {
-                                _oLastWaferTime = new EQPLastWaferTime();
-                                workinProcessSch.Cmd_Current_State = trans.CommandState is null ? "" : trans.CommandState;
-
-                                //取得機台的時間
-                                int iHours = 0;
-                                int iMinutes = 0;
-
-                                //iHours = 1;
-                                //iMinutes = 32;
-                                //EQPLastWaferTime
-                                //_oLastWaferTime
-                                _oLastWaferTime = GetLastWaferTimeByEQP(_dbTool, configuration, _logger, normalTransfer.EquipmentID, workinProcessSch.LotID);
-
-                                workinProcessSch.Start_Dt = dtStart.AddHours(_oLastWaferTime.Hours).AddMinutes(_oLastWaferTime.Minutes);
-                            }
-                            else
-                            {
-                                workinProcessSch.Cmd_Current_State = "";
-                                workinProcessSch.Start_Dt = dtStart;
                             }
 
                             if (_DebugMode)
@@ -6862,8 +6850,6 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
             {
                 //Do Nothing
                 logger.Debug(string.Format("CreateTransferCommandByPortModel [Exception]: {0}", ex.Message));
-                //20240905 Add, when database disconnect will brack out program, need unlock equipment.
-                _dbTool.SQLExec(_BaseDataService.LockEquip(_Equip, false), out tmpMsg, true);
             }
             finally
             {
@@ -8522,7 +8508,7 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
 #if DEBUG
                 //_logger.Info(string.Format("Info:{0}", tmpMsg));
 #else
-#endif
+#endif 
 
                 if (resultMsg.status)
                 {
@@ -10484,8 +10470,6 @@ Customer Device: {3}", tmpSmsMsg, tmpNextLot, lotid, tmpNextPartId, tmpPartId, s
 
             string apiFormat = "";
             string apiFunc = "";
-            string _currentStep = ""; 
-            string eventTrigger = "";
 
             try
             {
@@ -10519,7 +10503,7 @@ Customer Device for last lot: YYYYYYYYYYY
                 {
                     string idxAlarm = ""; 
                     string AlarmCode = "";
-                    eventTrigger = configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : configuration["RTDAlarm:Condition"];
+                    string eventTrigger = configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : configuration["RTDAlarm:Condition"];
                     string tmpAlarmType = "";
                     string tempMsg = "";
                     List<string> tmpParams = new List<string>();
@@ -10578,7 +10562,7 @@ Customer Device for last lot: YYYYYYYYYYY
                                             if (strTemp.Equals(""))
                                                 strTemp = string.Format("'{0}':{1}", tmpKey[0], tmpKey[1]);
                                             else
-                                                strTemp = string.Format("{0},'{1}':{2}", strTemp, tmpKey[0], tmpKey[1]);
+                                                strTemp = strTemp + string.Format(",'{0}':{1}", tmpKey[0], tmpKey[1]);
                                         }
 
                                         if(eventTrigger.Equals(""))
@@ -10683,27 +10667,12 @@ Customer Device for last lot: {6}", JsonJcetParams.EquipID, JsonJcetParams.nextl
                                             break;
                                         case "20051":
                                             //eRack Offline
-                                            tmpParams.Add(string.Format("e-Rack {0} offline, Setup Alert", rtdAlarms.UnitID));
-                                            //target.
-                                            tmpParams.Add(rtdAlarms.UnitID);
-                                            //Type.
-                                            tmpParams.Add(rtdAlarms.UnitType);
-                                            //Body
-                                            tempMsg = string.Format(@"UnitType: {0}
-UnitID: {1}
-Code: {2}
-Cause: {3}
-Last lot: {4}
-SubCode: {5}
-Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "", rtdAlarms.SubCode, rtdAlarms.Detail);
-
-                                            tmpParams.Add(string.Format(tempMsg));
 
                                             break;
                                         case "20052":
                                             //eRack water level full
                                             //Subject content.
-                                            tmpParams.Add(string.Format("e-Rack {0} water level Full, Setup Alert", rtdAlarms.UnitID));
+                                            tmpParams.Add(string.Format("e-Rack water level Full, Setup Alert"));
                                             //target.
                                             tmpParams.Add(rtdAlarms.UnitID);
                                             //Type.
@@ -10722,7 +10691,7 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
                                         case "20053":
                                             //eRack water level full
                                             //Subject content.
-                                            tmpParams.Add(string.Format("e-Rack {0} water level Full, Setup Alert", rtdAlarms.UnitID));
+                                            tmpParams.Add(string.Format("e-Rack water level Full, Setup Alert"));
                                             //target.
                                             tmpParams.Add(rtdAlarms.UnitID);
                                             //Type.
@@ -10777,7 +10746,6 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
 
                                     if (JsonJcetAlarm.eMail)
                                     {
-                                        _currentStep = "JsonJcetAlarm.eMail";
                                         string _alarmBy = "";
                                         string _tmpKey = "";
                                         ///寄送Mail
@@ -10894,7 +10862,6 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
 
                                     if (JsonJcetAlarm.SMS)
                                     {
-                                        _currentStep = "JsonJcetAlarm.SMS";
                                         //tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
 
                                         ///發送SMS 
@@ -10915,7 +10882,6 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
 
                                     if (JsonJcetAlarm.action)
                                     {
-                                        _currentStep = "JsonJcetAlarm.action";
                                         tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
 
                                         string scenario = JsonObject.Property("scenario") == null ? "Shutdown" : JsonObject["scenario"].ToString();
@@ -10966,7 +10932,6 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
 
                                     if (JsonJcetAlarm.repeat)
                                     {
-                                        _currentStep = "JsonJcetAlarm.repeat";
                                         tmpMsg = string.Format("{0}{1}", JcetAlarmMsg.Subject, JcetAlarmMsg.Body);
                                     }
                                     else
@@ -10985,7 +10950,7 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
                             catch(Exception ex)
                             {
                                 result = false;
-                                ErrMsg = string.Format("[{0}][{1}][{2}][{3}][{4}][{5}]", "Exception", funcName, "InForeach", _currentStep, idxAlarm, ex.Message);
+                                ErrMsg = string.Format("[{0}][{1}][{2}][{3}][{4}]", "Exception", funcName, "InForeach", idxAlarm, ex.Message);
                             }
 
                             if (!ErrMsg.Equals(""))
@@ -11574,42 +11539,73 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
 
             return bResult;
         }
-        public EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _equip, string _lotid)
+        public EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, EQPLastWaferTime _lastWaferTime)
         {
-            EQPLastWaferTime _lastWaferTime = new EQPLastWaferTime();
-            string _funcName = "GetLastWaferTimeByEQP";
+            bool bResult = false;
             string sql = "";
             DataTable dt;
             DataTable dt2;
             DataTable dtTemp;
+            string _equip = "";
+            string _portId = "";
+            string _tableOrder = "workinprocess_sch";
             string _lastModifyDt = "";
             string errMsg = "";
-            float _avgMRprocessingTime = 0;
-            string _tmpMsg = "";
+            string _funcName = "GetLastWaferTimeByEQP";
+            string _portState = "";
 
             try
             {
                 _lastWaferTime.Hours = 0;
                 _lastWaferTime.Minutes = 0;
 
-                if (!_equip.Equals(""))
-                    _lastWaferTime.EquipID = _equip;
-
-                if (!_lotid.Equals(""))
-                    _lastWaferTime.LotID = _lotid;
-
-                _avgMRprocessingTime = GetMRProcessTime(_dbTool, _configuration, _logger, _equip);
-
-                sql = string.Format(_BaseDataService.GetAvgProcessingTime(_equip, _lotid));
+                //QueryFurneceEQP
+                /*
+                sql = string.Format(_BaseDataService.QueryIslockPortId());
                 dt = _dbTool.GetDataTable(sql);
 
                 if (dt.Rows.Count > 0)
                 {
-                    _lastWaferTime.Hours = float.Parse(dt.Rows[0]["avgHours"].ToString());
-                    _lastWaferTime.Minutes = float.Parse(dt.Rows[0]["avgMinutes"].ToString()) - _avgMRprocessingTime;
-                }
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        try
+                        {
+                            _equip = row["equipid"].ToString();
+                            _portId = row["port_id"].ToString();
+                            _lastModifyDt = row["lastModify_dt"].ToString();
+                            _portState = row["port_state"].ToString();
 
-                _logger.Info(string.Format("Avg last wafer time: [{0}] hours [{1}] minutes/ MR Processing: [{2}] minutes", _lastWaferTime.Hours, _lastWaferTime.Minutes, _avgMRprocessingTime.ToString()));
+                            dt2 = _dbTool.GetDataTable(_BaseDataService.SelectTableWorkInProcessSchByEquipPort(_equip, _portId, _tableOrder));
+                            if (dt2.Rows.Count <= 0)
+                            {
+                                //重取lastModify Dt 防止中間有command 產生
+                                sql = string.Format(_BaseDataService.SelectTableEQP_Port_SetByPortId(_portId));
+                                dtTemp = _dbTool.GetDataTable(sql);
+
+                                if (dtTemp.Rows.Count > 0)
+                                {
+                                    _lastModifyDt = dtTemp.Rows[0]["lastModify_dt"].ToString();
+                                }
+
+                                if (TimerTool("minutes", _lastModifyDt) >= 5)
+                                {
+                                    _dbTool.SQLExec(_BaseDataService.LockEquipPortByPortId(_portId, false), out errMsg, true);
+
+                                    if (!errMsg.Equals(""))
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Unlock Fail][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                    else
+                                    {
+                                        _logger.Info(string.Format("[{0}][{1}][Auto Unlock][{2}][{3}]", _funcName, _portId, _lastModifyDt, _portState));
+                                    }
+                                }
+                            }
+                        }
+                        catch (Exception ex) { }
+                    }
+                }
+                */
             }
             catch (Exception ex)
             { }
@@ -11736,38 +11732,6 @@ Detail: {6}", rtdAlarms.UnitType, rtdAlarms.UnitID, rtdAlarms.Code, rtdAlarms, "
             { _bHeartbeat = false; }
 
             return _bHeartbeat;
-        }
-        public float GetMRProcessTime(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _equip)
-        {
-            float _spendTime = 0;
-            string _funcName = "GetMRProcessTime";
-            string sql = "";
-            DataTable dt;
-            DataTable dt2;
-            DataTable dtTemp;
-            string tmpMsg = "";
-
-            try
-            {
-                _spendTime = 0;
-                
-                if (!_equip.Equals(""))
-                {
-                    sql = string.Format(_BaseDataService.GetMRProcessingTime(_equip));
-                    dt = _dbTool.GetDataTable(sql);
-
-                    if (dt.Rows.Count > 0)
-                    {
-                        _spendTime = float.Parse(dt.Rows[0]["avgMinute"].ToString());
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                tmpMsg = string.Format("Function [{0}] exception: [{1}]", _funcName, ex.Message);
-            }
-
-            return _spendTime;
         }
     }
 }

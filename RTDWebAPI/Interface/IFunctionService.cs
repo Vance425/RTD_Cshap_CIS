@@ -72,11 +72,10 @@ namespace RTDWebAPI.Interface
         DataTable GetAvailableCarrierFromEQP(DBTool _dbTool, string _portid, string _carrierType, bool _isFull, string _RTDEnv);
         bool AutounlockportWhenNoOrder(DBTool _dbTool, IConfiguration _configuration, ILogger _logger);
         bool TransferCarrierToSideWH(DBTool _dbTool, IConfiguration _configuration, ConcurrentQueue<EventQueue> _eventQueue, ILogger _logger);
-        EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _equip, string _lotid);
+        EQPLastWaferTime GetLastWaferTimeByEQP(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, EQPLastWaferTime _lastWaferTime);
         string TryConvertDatetime(string _datetime);
         string GetJArrayValue(JObject _JArray, string key);
         bool CheckMCSStatus(DBTool _dbTool, ILogger _logger);
         bool Heartbeat(DBTool _dbTool, IConfiguration _configuration, ILogger _logger);
-        float GetMRProcessTime(DBTool _dbTool, IConfiguration _configuration, ILogger _logger, string _equip);
     }
 }

@@ -22,9 +22,6 @@ namespace RTDWebAPI.APP
         IFunctionService _functionService = new FunctionService();
         DBTool dbTool;
         string RTDServerName = "";
-        bool _bKeepUI = true;
-        int _changeTime = 0;
-        string _changeTimeUnit = "minutes";
 
         public void Start()
         {
@@ -39,9 +36,6 @@ namespace RTDWebAPI.APP
                 maxThdWorker = _configuration["ThreadPools:maxThread:workerThread"] is not null ? int.Parse(_configuration["ThreadPools:maxThread:workerThread"]) : minThdWorker; ;
                 maxPortThdComp = _configuration["ThreadPools:maxThread:portThread"] is not null ? int.Parse(_configuration["ThreadPools:maxThread:portThread"]) : minThdWorker; ;
                 RTDServerName = _configuration["AppSettings:Server"] is not null ? _configuration["AppSettings:Server"] : "RTDServer";
-                _bKeepUI = _configuration["KeepUI:Enable"] is null ? true : _configuration["KeepUI:Enable"].ToLower().Equals("false") ? false : true;
-                _changeTime = _configuration["ChangerServerTime:Time"] is null ? 5 : int.Parse(_configuration["ChangerServerTime:Time"].ToString());
-                _changeTimeUnit = _configuration["ChangerServerTime:Unit"] is null ? "minutes" : (_configuration["ChangerServerTime:Unit"].ToString());
             }
             catch (Exception ex)
             {
@@ -83,7 +77,6 @@ namespace RTDWebAPI.APP
                 string _sql = "";
                 DataTable dtTemp = null;
                 DataTable dtTemp2 = null;
-                DataTable dtTemp3 = null;
                 bool _serviceExist = false;
                 bool _serviceOn = false;
                 bool _isMasterServer = false;
@@ -116,13 +109,13 @@ namespace RTDWebAPI.APP
 
                                 if (_functionService.TimerTool("minutes", _responseTime) > 1)
                                 {
+                                    _serviceOn = true;
                                     _sql = _BaseDataService.UadateResponseTime(RTDServerName);
                                     _dbTool.SQLExec(_sql, out tmpMsg, true);
 
                                     _sql = _BaseDataService.UadateRTDServer(RTDServerName);
                                     _dbTool.SQLExec(_sql, out tmpMsg, true);
                                 }
-                                _serviceOn = true;
                             }
                             else
                             {
@@ -133,13 +126,17 @@ namespace RTDWebAPI.APP
                                     //update response time for this machine.
                                     _responseTime = dtTemp2.Rows[0]["responseTime"].ToString();
 
-                                    if (_functionService.TimerTool("seconds", _responseTime) > 15)
+                                    if (_functionService.TimerTool("minutes", _responseTime) > 1)
                                     {
                                         _serviceOn = true;
                                         _sql = _BaseDataService.UadateResponseTime(RTDServerName);
                                         _dbTool.SQLExec(_sql, out tmpMsg, true);
+
+                                        _sql = _BaseDataService.UadateRTDServer(RTDServerName);
+                                        _dbTool.SQLExec(_sql, out tmpMsg, true);
                                     }
-                                    _serviceOn = false;
+                                    else
+                                        _serviceOn = false;
                                 }
                                 else
                                 {
@@ -189,14 +186,7 @@ namespace RTDWebAPI.APP
                 int iCurrentllyUse = 0;
                 int iCurrentllySch = 0;
                 int iCurrentllylis = 0;
-                int iMaxThreads = 0;
-                int iminThreads = 0;
-                int iworkerThreads = 0;
-                int iio1Threads = 0;
-                int iio2Threads = 0;
-                int iio3Threads = 0;
                 string _tempFunc = "";
-                string _lastStepTime = "";
 
                 while (true)
                 {
@@ -235,22 +225,6 @@ namespace RTDWebAPI.APP
                                 {
                                         _serviceOn = false;
                                 }
-                                else
-                                {
-                                    _sql = _BaseDataService.QueryResponseTime(dtTemp.Rows[0]["paramvalue"].ToString());
-                                    dtTemp2 = dbTool.GetDataTable(_sql);
-                                    if (dtTemp2.Rows.Count > 0)
-                                    {
-                                        _responseTime = dtTemp2.Rows[0]["responseTime"].ToString();
-
-                                        if (_functionService.TimerTool("seconds", _responseTime) > 10)
-                                        {
-                                            _serviceOn = true;
-                                            _sql = _BaseDataService.UadateResponseTime(RTDServerName);
-                                            _dbTool.SQLExec(_sql, out tmpMsg, true);
-                                        }
-                                    }
-                                }
                             }
                             catch (Exception ex)
                             {
@@ -276,9 +250,8 @@ namespace RTDWebAPI.APP
                                     {
                                         _responseTime = dtTemp2.Rows[0]["responseTime"].ToString();
 
-                                        if (_functionService.TimerTool("minutes", _responseTime) > _changeTime)
+                                        if (_functionService.TimerTool("minutes", _responseTime) > 1)
                                         {
-                                            //Master over 1 minutes no response. change slave to master
                                             _serviceOn = true;
                                             _sql = _BaseDataService.UadateResponseTime(RTDServerName);
                                             _dbTool.SQLExec(_sql, out tmpMsg, true);
@@ -286,24 +259,6 @@ namespace RTDWebAPI.APP
                                             _sql = _BaseDataService.UadateRTDServer(RTDServerName);
                                             _dbTool.SQLExec(_sql, out tmpMsg, true);
                                         }
-                                        else
-                                        {
-                                            _sql = _BaseDataService.QueryResponseTime(RTDServerName);
-                                            dtTemp3 = dbTool.GetDataTable(_sql);
-                                            _responseTime = dtTemp3.Rows[0]["responseTime"].ToString();
-
-                                            if (_functionService.TimerTool("seconds", _responseTime) > 15)
-                                            {
-                                                _serviceOn = true;
-                                                _sql = _BaseDataService.UadateResponseTime(RTDServerName);
-                                                _dbTool.SQLExec(_sql, out tmpMsg, true);
-                                            }
-                                        }
-                                    }
-                                    else
-                                    {
-                                        if(!_serviceOn)
-                                            _serviceOn = true;
                                     }
                                 }
                             }
@@ -315,39 +270,24 @@ namespace RTDWebAPI.APP
 
                         //20230428 Modify by Vance,  keep thread for API/UI
                         int iIdle = 0;
+                        
+                        ThreadPool.GetAvailableThreads(out iCurUse, out iCompThd);
+                        
+                        iCurrentUI = iCurUse;
+                        iIdle = maxThdWorker - iCurrentUI;
+                        iCurrentllyUse = maxThdWorker - iCompThd;
 
-                        ThreadPool.GetMaxThreads(out iMaxThreads, out iio1Threads);
-                        ThreadPool.GetMinThreads(out iminThreads, out iio2Threads);
-                        ThreadPool.GetAvailableThreads(out iworkerThreads, out iio3Threads);
-#if DEBUG
-                        tmpMsg = string.Format("{6} Thread usage: ThreadID [{7}], iMaxThreads[{0}], iminThreads [{1}], iworkerThreads [{2}], iio1Threads [{3}], iio2Threads [{4}], iio3Threads [{5}]", iMaxThreads, iminThreads, iworkerThreads, iio1Threads, iio2Threads, iio3Threads, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), Thread.CurrentThread.ManagedThreadId);
-                        Console.WriteLine(tmpMsg);
-#else
-                        //do nothing
-#endif
-                        iIdle = iio3Threads - iworkerThreads;
-                        iCurrentllyUse = maxThdWorker - iio3Threads;
-                        iCurrentUI = 0;
-
-
-                        if (iworkerThreads < uidbAccessNum)
-                        {
-
-                            tmpMsg = string.Format("{6} RTD Stop, keep the thread for UI to use: Max Thread[{0}], CurrentUse [{1}], Completed [{2}], Idle [{3}], UI use [{4}], " +
-                                "iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iworkerThreads, iio3Threads, iIdle, iCurrentUI, 
-                                iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
-                            _logger.Info(tmpMsg);
-
-                            if(_bKeepUI)
-                                continue;
-                        }
-
-                        if(iio3Threads < maxThdWorker)
-                        {
-                            tmpMsg = string.Format("{6} Complete down, the thread usage: Max Thread[{0}], CurrentUse [{1}],Completed [{2}], Idle [{3}], UI use [{4}], iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iCurUse, iCompThd, iIdle, iCurrentUI, iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
-                            _logger.Info(tmpMsg);
-                        }
+                        if (iIdle < uidbAccessNum)
+                            continue;
                         //Idle thread < ui access, do not run logic for schedule and listen
+
+                        tmpMsg = string.Format("{6} Thread usage: Max Thread[{0}], CurrentUse [{1}],Completed [{2}], Idle [{3}], UI use [{4}], iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iCurUse, iCompThd, iIdle, iCurrentUI, iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
+                        if (iCurUse >= (maxThdWorker * 0.9))
+                        {
+                            _logger.Info(tmpMsg);
+                        }
+
+                        Console.WriteLine(tmpMsg);
 
                         if (!_threadConntroll.ContainsKey("ipass"))
                         {
@@ -363,7 +303,7 @@ namespace RTDWebAPI.APP
                         if (_threadConntroll["ipass"].Equals("0"))
                         {
                             ///keep 2 or 2 + UI access number for scheduled logic
-                            if (iworkerThreads >= uidbAccessNum || !_bKeepUI)
+                            if (iIdle >= uidbAccessNum)
                             {
                                 ///do scheduled logic
                                 ///int iCurrentUI = 0
@@ -371,17 +311,10 @@ namespace RTDWebAPI.APP
 
                                 //iCurrentllySch++;
 
-                                if (_lastStepTime.Equals("") || _functionService.TimerTool("seconds", _lastStepTime) >= 1)
-                                {
-
-                                    waitCallback = new WaitCallback(scheduleProcess);
-
-                                    ThreadPool.QueueUserWorkItem(waitCallback, obj);
-
-
-                                    _lastStepTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
-                                }
-
+                                waitCallback = new WaitCallback(scheduleProcess);
+                                
+                                ThreadPool.QueueUserWorkItem(waitCallback, obj);
+                                
                             }
                             else
                             {
@@ -432,6 +365,16 @@ namespace RTDWebAPI.APP
                         Console.WriteLine(tmpMsg);
                         _logger.Info(tmpMsg);
                     }
+
+
+                    if (_tempFunc.Equals("listeningStart"))
+                    {
+                        //iCurrentllylis--;
+                    }
+                    else if (_tempFunc.Equals("scheduleProcess"))
+                    {
+                        //iCurrentllySch--;
+                    }
                 }
             }
             catch (Exception ex)
@@ -480,12 +423,6 @@ namespace RTDWebAPI.APP
             IFunctionService _functionService = (FunctionService)obj[5];
             try
             {
-#if DEBUG
-                tmpMsg = string.Format("{2}, Function[{0}], Thread ID [{1}]", curPorcessName, Thread.CurrentThread.ManagedThreadId, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
-                Console.WriteLine(tmpMsg);
-#else
-#endif
-
                 lstDB = (List<string>)obj[1];
 
                 try {
@@ -1771,29 +1708,17 @@ namespace RTDWebAPI.APP
                                             rtdAlarms.Cause = "Erack wafer level High";
                                             rtdAlarms.Params = "";
                                             rtdAlarms.EventTrigger = _configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : _configuration["RTDAlarm:Condition"];
-                                            if (((IList)lsCtrlAlarmCode).IndexOf(evtObject4.ALID.ToString()) >= 0)
-                                            {
-                                                sql = _BaseDataService.QueryAlarmDetailByCode(evtObject4.ALID.ToString());
-                                                dtTemp = _dbTool.GetDataTable(sql);
-
-                                                rtdAlarms.EventTrigger = _configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", evtObject4.ALID.ToString())] is null ? _configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : _configuration["RTDAlarm:Condition"] : _configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", evtObject4.ALID.ToString())];
-                                            }
-                                            else
-                                            { rtdAlarms.Params = ""; }
                                             break;
                                         case 20053:
                                             //Full Alarm
                                             //Erack wafer level Full
                                             rtdAlarms.Cause = "Erack wafer level Full";
                                             rtdAlarms.Params = "";
-                                            if (((IList)lsCtrlAlarmCode).IndexOf(evtObject4.ALID.ToString()) >= 0)
-                                            {
-                                                sql = _BaseDataService.QueryAlarmDetailByCode(evtObject4.ALID.ToString());
-                                                dtTemp = _dbTool.GetDataTable(sql);
-
-                                                rtdAlarms.EventTrigger = _configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", evtObject4.ALID.ToString())] is null ? _configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : _configuration["RTDAlarm:Condition"] : _configuration[string.Format("RTDAlarm:ByAlarmNumber:{0}", evtObject4.ALID.ToString())];
-                                            }
+                                            rtdAlarms.EventTrigger = _configuration["RTDAlarm:Condition"] is null ? "eMail:true$SMS:true$repeat:false$hours:0$mints:10" : _configuration["RTDAlarm:Condition"];
                                             break;
+                                        case 25001:
+                                            //Low Alarm
+                                            //Do Nothing
                                         default:
                                             //Do Nothing
                                             //Record to Alarms Dashboard
@@ -2358,12 +2283,6 @@ namespace RTDWebAPI.APP
             IFunctionService _functionService = (FunctionService)obj[5];
             try
             {
-#if DEBUG
-                tmpMsg = string.Format("{2}, Function[{0}], Thread ID [{1}]", curPorcessName, Thread.CurrentThread.ManagedThreadId, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
-                Console.WriteLine(tmpMsg);
-#else
-#endif
-
                 lstDB = (List<string>)obj[1];
                 //_dbTool = new DBTool(lstDB[1], lstDB[2], lstDB[3], out tmpMsg);
                 //_dbTool._dblogger = _logger;
