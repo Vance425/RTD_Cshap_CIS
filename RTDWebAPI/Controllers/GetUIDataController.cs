@@ -38,6 +38,7 @@ namespace RTDWebAPI.Controllers
 
         public GetUIDataController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue, Dictionary<string, object> uiDataCatch)
         {
+            string tmpMsg = "";
             _dbTool = (DBTool)lstDBSession[0]; 
             _logger = logger;
             _configuration = configuration;
@@ -54,6 +55,9 @@ namespace RTDWebAPI.Controllers
                     break;
                 }
             }
+
+            tmpMsg = string.Format("{2} UI API, Function[{0}], Thread ID [{1}]", "GetUIDataController", Thread.CurrentThread.ManagedThreadId, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"));
+            Console.WriteLine(tmpMsg);
         }
 
         [HttpGet("Display")]
