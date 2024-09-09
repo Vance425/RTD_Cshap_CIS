@@ -1546,7 +1546,7 @@ namespace RTDWebAPI.Service
 
             strSQL = string.Format(@"select distinct a.carrier_id, a.carrier_type, a.associate_state, a.lot_id, a.quantity, b.type_key, b.carrier_state, b.locate, b.portno, 
                                 b.enable, b.location_type, b.metal_ring, b.reserve, b.state, c.equiplist, c.state, c.customername, c.stage, c.partid,
-                                c.lotType, c.rtd_state, c.total_qty from CARRIER_LOT_ASSOCIATE a 
+                                c.lotType, c.rtd_state, case when c.total_qty is null then to_number(a.total) else c.total_qty end as total_qty from CARRIER_LOT_ASSOCIATE a 
                                 left join CARRIER_TRANSFER b on b.carrier_id=a.carrier_id 
                                 left join LOT_INFO c on c.lotid = a.lot_id {0}", tmpWhere);
             return strSQL;
@@ -2001,6 +2001,44 @@ namespace RTDWebAPI.Service
             strSQL = string.Format(@"select device from rts.v_rts_equipment@cimdb3.world where equipid='{0}'", EquipID);
 #endif
             //rtd_state = 'INIT', lastmodify_dt = sys_extract_utc(SYSTIMESTAMP) where lotid = '{0}'", LotID);
+            return strSQL;
+        }
+        public string GetAvgProcessingTime(string _equip, string _lotid)
+        {
+            string strSQL = "";
+            string strWhere = "";
+            string _tmpTable = "cis_wafer_processing_evt_vw";
+
+            strWhere = string.Format(@"where toolid='{0}' and waferprocess_flag='C' and lotid = '{1}'", _equip, _lotid);
+
+            strSQL = string.Format(@"select lotid, avg(hour1) avgHours, avg(minute1) avgMinutes from (
+select lotid, extract(hour from to_timestamp(to_char(wafer_end_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss') -to_timestamp(to_char(wafer_start_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss')) hour1,
+extract(minute from to_timestamp(to_char(wafer_end_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss') -to_timestamp(to_char(wafer_start_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss')) minute1
+from {0} {1} order by wafer_start_time
+) group by lotid", _tmpTable, strWhere);
+
+            return strSQL;
+        }
+        public string GetMRProcessingTime(string _equip)
+        {
+            string strSQL = "";
+
+            strSQL = string.Format(@"select c.equipid, round(avg(extract(minute from to_timestamp(successtime, 'yyyy/MM/dd HH24:Mi:ss')-to_timestamp(runtime, 'yyyy/MM/dd HH24:Mi:ss'))), 2) avgMinute
+from (
+select a.cmd_id, a.equipid, to_char(a.max_dt, 'yyyy/MM/dd HH24:Mi:ss') as runtime, 
+to_char(b.min_dt,'yyyy/MM/dd HH24:Mi:ss') as successtime from (
+select cmd_id, equipid, cmd_state, max(lastmodify_dt) max_dt
+from workinprocess_sch_his 
+where equipid='{0}' and cmd_type='UNLOAD' and cmd_state in ('Running')
+group by cmd_id, equipid, cmd_state) a
+left join ( 
+select cmd_id, equipid, cmd_state, min(lastmodify_dt) min_dt
+from workinprocess_sch_his 
+where equipid='{0}' and cmd_type='UNLOAD' and cmd_state in ('Success')
+group by cmd_id, equipid, cmd_state) b on a.cmd_id=b.cmd_id
+where b.min_dt is not null and a.max_dt > sysdate - interval '7' day
+ order by a.max_dt desc) c group by c.equipid", _equip);
+
             return strSQL;
         }
     }

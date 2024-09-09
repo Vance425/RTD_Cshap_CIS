@@ -274,5 +274,7 @@ namespace RTDWebAPI.Interface
         string QueryResponseTime(string _server);
         string InsertResponseTime(string _server);
         string UadateResponseTime(string _server);
+        string GetAvgProcessingTime(string _equip, string _lotid);
+        string GetMRProcessingTime(string _equip);
     }
 }
