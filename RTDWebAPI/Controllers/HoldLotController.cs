@@ -27,25 +27,14 @@ namespace RTDWebAPI.Controllers
         private readonly ILogger _logger;
         private readonly DBTool _dbTool;
         private readonly ConcurrentQueue<EventQueue> _eventQueue;
-        private readonly List<DBTool> _lstDBSession;
 
-        public HoldLotController(List<DBTool> lstDBSession, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
+        public HoldLotController(DBTool dbTool, IConfiguration configuration, ILogger logger, IFunctionService functionService, ConcurrentQueue<EventQueue> eventQueue)
         {
             _logger = logger;
             _configuration = configuration;
             _functionService = functionService;
-            //_dbTool = dbTool;
+            _dbTool = dbTool;
             _eventQueue = eventQueue;
-            _lstDBSession = lstDBSession;
-
-            for (int idb = _lstDBSession.Count - 1; idb >= 0; idb--)
-            {
-                _dbTool = _lstDBSession[idb];
-                if (_dbTool.IsConnected)
-                {
-                    break;
-                }
-            }
         }
 
         [HttpPost]
@@ -98,8 +87,6 @@ namespace RTDWebAPI.Controllers
                         foo.Success = true;
                         foo.State = "OK";
                         foo.Message = tmpMsg;
-
-                        string tmp2Msg = String.Format("Update Success. [Manual Hold Lot][{0}]", LotId);
                     }
                     else
                     {

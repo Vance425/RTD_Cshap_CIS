@@ -33,11 +33,10 @@ namespace RTDWebAPI
         Dictionary<string, string> threadControll = new Dictionary<string, string>();
         List<DBTool> lstDBSession = new List<DBTool>();
         Dictionary<string, object> uiDataCatch = new Dictionary<string, object>();
-        public Dictionary<string, string> alarmDetail = new Dictionary<string, string>();
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
-            string rtdVer = "Version 1.0.23.1017.1.0.1";
+            string rtdVer = "Version 1.1.230502.01";
             string msg = "";
             string tmpMsg = "";
             //DBPool dbPool = null;
@@ -79,25 +78,18 @@ RRRRRRRRRRRRRRRTTT       DDDDDDDispatcher  System {0} @ Gyro System Inc.", rtdVe
                         string tmpDatabase = Configuration["DBConnect:Oracle:providerName"];
                         string tmpAutoDisconn = Configuration["DBConnect:Oracle:autoDisconnect"];
                         dbTool = new DBTool(tmpConnectString, tmpDatabase, tmpAutoDisconn, out msg);
-                        dbTool._dblogger = logger;
 
                         if (!dbTool.IsConnected)
                         {
                             msg = "DB Connection failed.retry in 1 minute";
                             Console.WriteLine(msg);
                             logger.Info(msg);
-                            logger.Error(msg);
                             Thread.Sleep(30000);
                             continue;
                         }
 
                         lstDBSession.Add(dbTool);
                         dbAPI = new DBTool(tmpConnectString, tmpDatabase, tmpAutoDisconn, out msg);
-                        dbAPI._dblogger = logger;
-
-                        msg = "Started of RTD system.";
-                        logger.Error(msg);
-
 
                         if (!dbAPI.IsConnected)
                         {
@@ -109,58 +101,36 @@ RRRRRRRRRRRRRRRTTT       DDDDDDDispatcher  System {0} @ Gyro System Inc.", rtdVe
                         }
                         lstDBSession.Add(dbAPI);
 
-                        if (alarmDetail.Count <= 0)
-                        {
-                            string sql = "";
-                            DataTable dt = null;
-                            sql = "select * from alarm_detail";
-                            dt = dbTool.GetDataTable(sql);
-                            string keyAlarm = "";
-                            foreach (DataRow row in dt.Rows)
-                            {
-                                keyAlarm = string.Format("{0}{1}", row["AlarmCode"].ToString(), row["SubCode"].ToString());
-                                //"AlarmCode", "AlarmText"
-                                if(!alarmDetail.ContainsKey(keyAlarm))
-                                    alarmDetail.Add(keyAlarm, row["AlarmText"].ToString());
-                            }
-                        }
-
                         msg = string.Format("DB Connection success.");
                         Console.WriteLine(msg);
                         logger.Info(msg);
 
-                        tmpMsg = "COMMAND_STREAMCODE";
-                        if (!OracleSequence.ExistsSequance(dbTool, tmpMsg))
+                        tmpMsg = "command_streamCode";
+                        if (OracleSequence.CreateSequence(dbTool, tmpMsg, 1, 99999))
                         {
-                            if (OracleSequence.CreateSequence(dbTool, tmpMsg, 1, 99999))
-                            {
-                                msg = string.Format("Create Sequence [{0}] success.", tmpMsg);
-                                Console.WriteLine(msg);
-                                logger.Info(msg);
-                            }
-                            else
-                            {
-                                msg = string.Format("Create Sequence [{0}] failed.", tmpMsg);
-                                Console.WriteLine(msg);
-                                logger.Info(msg);
-                            }
+                            msg = string.Format("Create Sequence [{0}] success.", tmpMsg);
+                            Console.WriteLine(msg);
+                            logger.Info(msg);
+                        }
+                        else
+                        {
+                            msg = string.Format("Create Sequence [{0}] failed.", tmpMsg);
+                            Console.WriteLine(msg);
+                            logger.Info(msg);
                         }
 
                         tmpMsg = "UID_STREAMCODE";
-                        if (!OracleSequence.ExistsSequance(dbTool, tmpMsg))
+                        if(OracleSequence.CreateSequence(dbTool, tmpMsg, 1, 99999999))
                         {
-                            if (OracleSequence.CreateSequence(dbTool, tmpMsg, 1, 99999999))
-                            {
-                                msg = string.Format("Create Sequence [{0}] success.", tmpMsg);
-                                Console.WriteLine(msg);
-                                logger.Info(msg);
-                            }
-                            else
-                            {
-                                msg = string.Format("Create Sequence [{0}] failed.", tmpMsg);
-                                Console.WriteLine(msg);
-                                logger.Info(msg);
-                            }
+                            msg = string.Format("Create Sequence [{0}] success.", tmpMsg);
+                            Console.WriteLine(msg);
+                            logger.Info(msg);
+                        }
+                        else
+                        {
+                            msg = string.Format("Create Sequence [{0}] failed.", tmpMsg);
+                            Console.WriteLine(msg);
+                            logger.Info(msg);
                         }
 
                         break;
@@ -204,7 +174,7 @@ RRRRRRRRRRRRRRRTTT       DDDDDDDispatcher  System {0} @ Gyro System Inc.", rtdVe
                             mainService._functionService = functionService;
                             mainService._listDBSession = lstDBSession;
                             mainService._uiDataCatch = uiDataCatch;
-                            mainService._alarmDetail = alarmDetail;
+
 
 
                         try
@@ -290,7 +260,6 @@ RRRRRRRRRRRRRRRTTT       DDDDDDDispatcher  System {0} @ Gyro System Inc.", rtdVe
             services.AddSingleton<ConcurrentQueue<EventQueue>>(eventQ);
             services.AddSingleton<IConfiguration>(Configuration);
             services.AddSingleton<IFunctionService>(functionService);
-            services.AddSingleton<Dictionary<string, string>>(alarmDetail);
             // Add Cors
             services.AddCors(o => o.AddPolicy("MyPolicy", builder =>
             {
@@ -343,37 +312,12 @@ RRRRRRRRRRRRRRRTTT       DDDDDDDispatcher  System {0} @ Gyro System Inc.", rtdVe
         public static void CreateLogger()
         {
             var config = new LoggingConfiguration();
-            var rtdTarget = new FileTarget
+            var fileTarget = new FileTarget
             {
                 FileName = "${basedir}/logs/${shortdate}.log",
                 Layout = "${date:format=yyyy-MM-dd HH\\:mm\\:ss} [${uppercase:${level}}] ${message}",
-                ArchiveAboveSize = 102400000,
             };
-            rtdTarget.ArchiveFileName = "${basedir}/logs/${shortdate}.{#}.log";
-
-            config.AddRule(LogLevel.Info, LogLevel.Warn, rtdTarget);
-
-            var IssueTarget = new FileTarget
-            {
-                FileName = "${basedir}/logs/Issue_${shortdate}.log",
-                Layout = "${date:format=yyyy-MM-dd HH\\:mm\\:ss} [${uppercase:${level}}] ${message}",
-                ArchiveAboveSize = 102400000,
-            };
-            IssueTarget.ArchiveFileName = "${basedir}/logs/Issue_${shortdate}.{#}.log";
-
-            config.AddRule(LogLevel.Error, LogLevel.Error, IssueTarget);
-
-            var DebugTarget = new FileTarget
-            {
-                FileName = "${basedir}/logs/Debug_${shortdate}.log",
-                Layout = "${date:format=yyyy-MM-dd HH\\:mm\\:ss} [${uppercase:${level}}] ${message}",
-                ArchiveAboveSize = 102400000,
-            };
-            //DebugTarget.ArchiveAboveSize = 2;// 2048000;
-            DebugTarget.ArchiveFileName = "${basedir}/logs/Debug_${shortdate}.{#}.log";
-
-            config.AddRule(LogLevel.Debug, LogLevel.Debug, DebugTarget);
-
+            config.AddRule(LogLevel.Trace, LogLevel.Fatal, fileTarget);
             LogManager.Configuration = config;
         }
     }

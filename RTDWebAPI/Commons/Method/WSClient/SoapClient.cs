@@ -1,5 +1,4 @@
-﻿using Nancy.Json;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NLog;
 using RTDWebAPI.Commons.Method.Tools;
@@ -42,8 +41,6 @@ namespace RTDWebAPI.Commons.Method.WSClient
         /// 參數格式
         /// </summary>
         private const String FORMAT_PARAMETER = "<{0}>{1}</{0}>";
-
-        private static ILogger _iLogger { get; set; }
 
         /// <summary>
         /// 序列化
@@ -319,8 +316,6 @@ namespace RTDWebAPI.Commons.Method.WSClient
         public String hostname { get; set; }
         public int portno { get; set; }
 
-        public ILogger Logger { get; set; }
-
         public ResultMsg UserLogin(string username, string pwd)
         {
             ResultMsg retMsg = new ResultMsg();
@@ -398,7 +393,7 @@ namespace RTDWebAPI.Commons.Method.WSClient
                         data = JCETWebServicesClient.WebServiceGet(_url, MethodCode, ht);
                         break;
                     case "post":
-                        data = JCETWebServicesClient.PostWebService(Logger, _url, MethodCode, ht);
+                        data = JCETWebServicesClient.PostWebService(_url, MethodCode, ht);
                         break;
                     case "soap12":
                     default:
@@ -455,10 +450,7 @@ namespace RTDWebAPI.Commons.Method.WSClient
                         data = JCETWebServicesClient.WebServiceGet(_url, MethodCode, ht);
                         break;
                     case "post":
-                        data = JCETWebServicesClient.PostWebService(Logger, _url, MethodCode, ht);
-                        break;
-                    case "postjson":
-                        data = JCETWebServicesClient.PostWebService(Logger, _url, MethodCode, ht);
+                        data = JCETWebServicesClient.PostWebService(_url, MethodCode, ht);
                         break;
                     case "soap12":
                     default:
@@ -468,106 +460,6 @@ namespace RTDWebAPI.Commons.Method.WSClient
 
                 retMsg.status = true;
                 retMsg.retMessage = HttpUtility.HtmlDecode(data.ToString());
-            }
-            catch (Exception ex)
-            {
-                retMsg.status = false;
-                retMsg.retMessage = ex.Message;
-
-            }
-
-            return retMsg;
-        }
-        public ResultMsg CIMAPP006(string _func, string weburl, string webformat, string useMethod, string equip, string username, string pwd, string lotid)
-        {
-            ResultMsg retMsg = new ResultMsg();
-            string MethodCode = "_TPQuery_CurrentLotState";
-            string _format = "";
-
-            if(webformat.Equals(""))
-                _format = "text";
-            else
-                _format = "json";
-
-            switch (_func.ToLower())
-            {
-                case "checkecert":
-                    MethodCode = "checkecert";
-                    break;
-                case "rtsdown":
-                    MethodCode = "RtsDown";
-                    break;
-                default:
-                    break;
-            }
-
-            String soapAction = string.Format("http://tempuri.org/{0}", MethodCode);
-            //http://scscimapp006.jcim-sg.jsg.jcetglobal.com/C10_RTD_API/checkecert
-            if (_url.Equals(""))
-            {
-                string tmpUrl = "{0}";
-                _url = string.Format(tmpUrl, weburl);
-            }
-
-            try
-            {
-                clsCimApp clsCimApp = new clsCimApp();
-                clsCimApp.toolsid = equip;
-                clsCimApp.username = username;
-                clsCimApp.pwd = pwd;
-                clsCimApp.lotid = lotid;
-                string soapValue = JsonConvert.SerializeObject(clsCimApp);
-
-                Hashtable ht = new Hashtable();
-
-                switch (_func.ToLower())
-                {
-                    case "checkecert":
-                        ht.Add("toolid", equip);
-                        ht.Add("userid", username);
-                        ht.Add("pswd", pwd);
-                        ht.Add("lotid", lotid);
-                        break;
-                    case "rtsdown":
-                        ht.Add("toolid", equip);
-                        ht.Add("userid", username);
-                        ht.Add("reason", pwd);
-                        ht.Add("State", "DOWN");
-                        break;
-                    default:
-                        break;
-                }
-
-                //ht.Add("toolsid", equip);
-                //ht.Add("Username", username);
-                //ht.Add("Password", pwd);
-                //ht.Add("LotId", lotid);
-                //var data = JCETWebServicesClient.SoapV1_2WebService(_url, MethodCode, ht, "http://tempuri.org/");
-
-                var data = "";
-                switch (useMethod.ToLower())
-                {
-                    case "soap11":
-                        data = JCETWebServicesClient.SoapV1_1WebService(_url, MethodCode, ht, "http://tempuri.org/");
-                        break;
-                    case "get":
-                        data = JCETWebServicesClient.WebServiceGet(_url, MethodCode, ht);
-                        break;
-                    case "post":
-                        if(_format.ToLower().Equals("json"))
-                            data = JCETWebServicesClient.PostWebServiceByJson(Logger, _url, MethodCode, ht);
-                        else
-                            data = JCETWebServicesClient.PostWebService(Logger, _url, MethodCode, ht);
-                        break;
-                    case "soap12":
-                    default:
-                        data = JCETWebServicesClient.SoapV1_2WebService(_url, MethodCode, ht, "http://tempuri.org/");
-                        break;
-                }
-
-                retMsg.status = true;
-                retMsg.retMessage = HttpUtility.HtmlDecode(data.ToString());
-                //retMsg.retMessage = data.ToString();
             }
             catch (Exception ex)
             {
@@ -586,13 +478,6 @@ namespace RTDWebAPI.Commons.Method.WSClient
         }
         public class clsLotState
         {
-            public string username { get; set; }
-            public string pwd { get; set; }
-            public string lotid { get; set; }
-        }
-        public class clsCimApp
-        {
-            public string toolsid { get; set; }
             public string username { get; set; }
             public string pwd { get; set; }
             public string lotid { get; set; }
@@ -651,23 +536,19 @@ namespace RTDWebAPI.Commons.Method.WSClient
         }
         private static string ObjectToSoapXml(object o)
         {
-            if (o is not null)
+            XmlSerializer mySerializer = new XmlSerializer(o.GetType());
+            MemoryStream ms = new MemoryStream();
+            mySerializer.Serialize(ms, o);
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(Encoding.UTF8.GetString(ms.ToArray()));
+            if (doc.DocumentElement != null)
             {
-                XmlSerializer mySerializer = new XmlSerializer(o.GetType());
-                MemoryStream ms = new MemoryStream();
-                mySerializer.Serialize(ms, o);
-                XmlDocument doc = new XmlDocument();
-                doc.LoadXml(Encoding.UTF8.GetString(ms.ToArray()));
-                if (doc.DocumentElement != null)
-                {
-                    return doc.DocumentElement.InnerXml;
-                }
-                else
-                {
-                    return o.ToString();
-                }
+                return doc.DocumentElement.InnerXml;
             }
-            return "";
+            else
+            {
+                return o.ToString();
+            }
         }
         public static string SoapV1_1WebService(String URL, String MethodName, Hashtable Pars, string XmlNs)
         {
@@ -752,7 +633,7 @@ namespace RTDWebAPI.Commons.Method.WSClient
         /// <summary>
         /// 需要WebService支持Post調用
         /// </summary>
-        public static string PostWebService(ILogger _logger, String URL, String MethodName, Hashtable ht)
+        public static string PostWebService(String URL, String MethodName, Hashtable ht)
         {
             HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(URL + "/" + MethodName);
             request.Method = "POST";
@@ -762,40 +643,7 @@ namespace RTDWebAPI.Commons.Method.WSClient
             //超時時間
             request.Timeout = 120000;
             var PostStr = HashtableToPostData(ht);
-
-            _logger.Info(string.Format("[{0}][{1}][{2}]", request.Method, request.ContentType, PostStr));
             byte[] data = System.Text.Encoding.UTF8.GetBytes(PostStr);
-            request.ContentLength = data.Length;
-            Stream writer = request.GetRequestStream();
-            writer.Write(data, 0, data.Length);
-            writer.Close();
-            var response = request.GetResponse();
-            var stream = response.GetResponseStream();
-            StreamReader sr = new StreamReader(stream, Encoding.UTF8);
-            String retXml = sr.ReadToEnd();
-            sr.Close();
-            return retXml;
-        }
-        public static string PostWebServiceByJson(ILogger _logger, String URL, String MethodName, Hashtable ht)
-        {
-            JavaScriptSerializer JsonHelper = new JavaScriptSerializer();
-            
-            HttpWebRequest request = (HttpWebRequest)HttpWebRequest.Create(URL + "/" + MethodName);
-            request.Method = "POST";
-            request.ContentType = "application/json";
-            // 憑證
-            request.Credentials = CredentialCache.DefaultCredentials;
-            //超時時間
-            request.Timeout = 120000;
-            //var PostStr = HashtableToPostData(ht);
-            //var PostStr = HashtableToJson(ht);
-            //string postStr_json = JsonHelper.Serialize(ht);
-            string postStr_json = JsonConvert.SerializeObject(ht);
-
-            _logger.Info(string.Format("[{0}][{1}][{2}]", request.Method, request.ContentType, postStr_json));
-            //logger.Info(string.Format("[{0}][{1}][{2}]", request.Method, request.ContentType, postStr_json));
-
-            byte[] data = System.Text.Encoding.UTF8.GetBytes(postStr_json);
             request.ContentLength = data.Length;
             Stream writer = request.GetRequestStream();
             writer.Write(data, 0, data.Length);

@@ -18,7 +18,5 @@ namespace RTDWebAPI.Models
         public string WaferLot { get; set; }
         public string HoldReas { get; set; }
         public string POTD { get; set; }
-        public int Total { get; set; }
-        public int Quantity { get; set; }
     }
 }
