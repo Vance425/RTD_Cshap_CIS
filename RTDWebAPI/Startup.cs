@@ -20,6 +20,7 @@ using RTDWebAPI.Interface;
 using RTDWebAPI.Service;
 using RTDWebAPI.Commons.Method.Tools;
 using System.Data;
+using GyroSystemControl;
 
 namespace RTDWebAPI
 {
@@ -34,10 +35,11 @@ namespace RTDWebAPI
         List<DBTool> lstDBSession = new List<DBTool>();
         Dictionary<string, object> uiDataCatch = new Dictionary<string, object>();
         public Dictionary<string, string> alarmDetail = new Dictionary<string, string>();
+        ClassGyroSystemControl _tmpClassGyroSystemControl = new ClassGyroSystemControl();
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
-            string rtdVer = "Version 1.0.23.1017.1.0.1";
+            string rtdVer = _tmpClassGyroSystemControl.GetSystemVersion;
             string msg = "";
             string tmpMsg = "";
             //DBPool dbPool = null;

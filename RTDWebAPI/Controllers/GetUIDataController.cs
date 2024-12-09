@@ -1926,7 +1926,7 @@ namespace RTDWebAPI.Controllers
                         if (!value.ReworkMode.Equals(isManualMode))
                         {
                             tmpMsg = string.Format("Equipment [%s] been change to %s", value.EquipID, descTemp);
-
+                            _logger.Info(tmpMsg);
                             //// 更新狀態
                             _dbTool.SQLExec(_BaseDataService.ManualModeSwitch(value.EquipID, value.ReworkMode), out tmpMsg, true);
                             _logger.Debug(tmpMsg);
@@ -1937,7 +1937,7 @@ namespace RTDWebAPI.Controllers
                         if (!value.ReworkMode.Equals(isManualMode))
                         {
                             tmpMsg = string.Format("Equipment [%s] been change to %s", value.EquipID, descTemp);
-
+                            _logger.Info(tmpMsg);
                             //// 更新狀態
                             _dbTool.SQLExec(_BaseDataService.ManualModeSwitch(value.EquipID, value.ReworkMode), out tmpMsg, true);
                             _logger.Debug(tmpMsg);
@@ -2466,6 +2466,19 @@ namespace RTDWebAPI.Controllers
 
                                 return foo;
                             }
+                            else
+                            {
+                                try
+                                {
+                                    dt = _dbTool.GetDataTable(_BaseDataService.SelectTableCarrierAssociateByLotid(tmpLotID));
+                                    if (dt.Rows.Count > 0)
+                                    {
+                                        //iPreTransMode = dt.Rows[0]["PRETRANSFER"].ToString().Equals("1") ? true : false;
+                                        tmpCarrierID = dt.Rows[0]["Carrier_Id"] is not null ? dt.Rows[0]["Carrier_Id"].ToString() : "";
+                                    }
+                                }
+                                catch (Exception ex) { }
+                            }
                         }
                         else
                         {
@@ -2598,7 +2611,7 @@ namespace RTDWebAPI.Controllers
                                 if (_functionService.CheckMCSStatus(_dbTool, _logger))
                                 {
 
-                                    tmpp.Add(value.CarrierID);
+                                    tmpp.Add(tmpCarrierID);
                                     tmpp.Add(tmpLotID);
                                     tmpp.Add(value.PortID);
                                     tmpp.Add(value.Quantity.ToString());

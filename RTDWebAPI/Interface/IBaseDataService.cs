@@ -114,6 +114,7 @@ namespace RTDWebAPI.Interface
         string GetLockStateLotInfo();
         string ReflushWhenSeqZeroStateWait();
         string SyncNextStageOfLot(string _resourceTable, string _lotid);
+        string SyncNextStageOfLotNoPriority(string _resourceTable, string _lotid);
         string UpdateLotInfoWhenCOMP(string _commandId, string _table);
         string UpdateLotInfoWhenFail(string _commandId, string _table);
         string UpdateEquipCurrentStatus(string _current, string _equipid);
@@ -276,5 +277,10 @@ namespace RTDWebAPI.Interface
         string UadateResponseTime(string _server);
         string GetAvgProcessingTime(string _equip, string _lotid);
         string GetMRProcessingTime(string _equip);
+        string CarrierTransferDTUpdate(string _carrierid, string _updateType);
+        string QueryScale(string _parameter);
+        string GetEQPortLastLot(string _port);
+        string QueryNearCompletedByPortID(string _portID);
+        string ResetStartDtByCmdID(string _cmdID);
     }
 }

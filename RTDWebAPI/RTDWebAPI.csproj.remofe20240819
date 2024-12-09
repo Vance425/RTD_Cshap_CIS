@@ -16,19 +16,28 @@
     <Compile Remove="ClientApp\**" />
     <Compile Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <Compile Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+<<<<<<< HEAD
     <Compile Remove="Commons\Method\Log\**" />
+=======
+>>>>>>> 加入專案檔案。
     <Compile Remove="Commons\Method\WebServiceClient\**" />
     <Compile Remove="Connected Services\**" />
     <Content Remove="ClientApp\**" />
     <Content Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <Content Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+<<<<<<< HEAD
     <Content Remove="Commons\Method\Log\**" />
+=======
+>>>>>>> 加入專案檔案。
     <Content Remove="Commons\Method\WebServiceClient\**" />
     <Content Remove="Connected Services\**" />
     <EmbeddedResource Remove="ClientApp\**" />
     <EmbeddedResource Remove="Commons\Method\HttpClientCallJWTAPI1\**" />
     <EmbeddedResource Remove="Commons\Method\HttpClientCallJWTAPI\**" />
+<<<<<<< HEAD
     <EmbeddedResource Remove="Commons\Method\Log\**" />
+=======
+>>>>>>> 加入專案檔案。
     <EmbeddedResource Remove="Commons\Method\WebServiceClient\**" />
     <EmbeddedResource Remove="Connected Services\**" />
     <None Remove="ClientApp\**" />
@@ -36,16 +45,22 @@
 	  
     <None Remove="Commons\Method\HttpClientCallJWTAPI\**" />
 	  
+<<<<<<< HEAD
     <None Remove="Commons\Method\Log\**" />
 	  
+=======
+>>>>>>> 加入專案檔案。
     <None Remove="Commons\Method\WebServiceClient\**" />
 	  
     <None Remove="Connected Services\**" />
 	  
     <TypeScriptCompile Remove="ClientApp\**" />
 	  
+<<<<<<< HEAD
     <TypeScriptCompile Remove="Commons\Method\Log\**" />
 	  
+=======
+>>>>>>> 加入專案檔案。
     <TypeScriptCompile Remove="Commons\Method\WebServiceClient\**" />
 	  
     <TypeScriptCompile Remove="Connected Services\**" />
@@ -69,6 +84,7 @@
   </ItemGroup>
 
   <ItemGroup>
+<<<<<<< HEAD
     <PackageReference Include="Autofac" Version="6.3.0" />
     <PackageReference Include="Grpc.AspNetCore" Version="2.40.0" />
     <PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="5.2.9" />
@@ -79,12 +95,23 @@
     <PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="5.0.17" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0" />
+=======
+    <PackageReference Include="Autofac" Version="8.0.0" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.40.0" />
+    <PackageReference Include="Microsoft.AspNet.WebApi.Client" Version="6.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication" Version="2.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="5.0.17" />
+    <PackageReference Include="Microsoft.AspNetCore.SpaServices.Extensions" Version="5.0.17" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2" />
+>>>>>>> 加入專案檔案。
     <PackageReference Include="Microsoft.TypeScript.MSBuild" Version="4.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.15.1" />
     <PackageReference Include="Nancy.Serialization.JsonNet" Version="1.4.1" />
+<<<<<<< HEAD
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="NLog" Version="4.7.15" />
     <PackageReference Include="Node.js" Version="5.3.0" />
@@ -96,6 +123,19 @@
     <PackageReference Include="Swashbuckle" Version="5.6.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.3.0" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="6.3.1" />
+=======
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="NLog" Version="5.3.1" />
+    <PackageReference Include="Node.js" Version="5.3.0" />
+    <PackageReference Include="node.TypeScript.DefinitelyTyped" Version="3.4.2" />
+    <PackageReference Include="ODP.NetCore" Version="2.0.12" />
+    <PackageReference Include="Secs4Net" Version="2.4.3" />
+    <PackageReference Include="ServiceStack" Version="8.3.0" />
+    <PackageReference Include="Swagger.Net.UI" Version="1.1.0" />
+    <PackageReference Include="Swashbuckle" Version="5.6.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.7.3" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="6.7.3" />
+>>>>>>> 加入專案檔案。
     <PackageReference Include="System.Configuration.ConfigurationManager" Version="6.0.0" />
     <PackageReference Include="System.Data.SqlClient" Version="4.8.3" />
     <PackageReference Include="System.ServiceModel.Duplex" Version="4.8.*" />
@@ -107,16 +147,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GyroSystemController\GyroSystemControl.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
+<<<<<<< HEAD
     <Reference Include="RTDSrv">
       <HintPath>Dll\RTDSrv.dll</HintPath>
     </Reference>
   </ItemGroup>
 
   <ItemGroup>
+=======
+>>>>>>> 加入專案檔案。
     <Compile Update="Properties\Resources.Designer.cs">
       <DesignTime>True</DesignTime>
       <AutoGen>True</AutoGen>

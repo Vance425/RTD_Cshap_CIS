@@ -177,6 +177,9 @@ namespace RTDWebAPI.Controllers
                         sql = String.Format(_BaseDataService.CarrierLocateReset(value, haveMetalRing));
                         _dbTool.SQLExec(sql, out tmpMsg, true);
 
+                        tmpMsg = string.Format("Reset carrier locate by func [{0}]. carrier id [{1}]", funcName, value.CarrierID);
+                        _logger.Info(tmpMsg);
+
                         sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(value, haveMetalRing));
                         _dbTool.SQLExec(sql, out tmpMsg, true);
 

@@ -20,5 +20,6 @@ namespace RTDWebAPI.Models
         public string POTD { get; set; }
         public int Total { get; set; }
         public int Quantity { get; set; }
+        public bool Force { get; set; }
     }
 }

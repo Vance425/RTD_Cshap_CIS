@@ -339,5 +339,57 @@ namespace RTDWebAPI.Controllers
         {
             public string CarrierID { get; set; }
         }
+        [HttpPost("AvgScale")]
+        public APIResult AvgScale([FromBody] clasAvgScale value)
+        {
+            APIResult foo;
+            string funcName = "AvgScale";
+            string tmpMsg = "";
+            int iExecuteMode = 1;
+            DataTable dt = null;
+            DataTable dtTemp = null;
+            DataRow[] dr = null;
+            string sql = "";
+            IBaseDataService _BaseDataService = new BaseDataService();
+            EQPLastWaferTime _oLastWaferTime = new EQPLastWaferTime();
+
+            try
+            {
+                var jsonStringName = new JavaScriptSerializer();
+                var jsonStringResult = jsonStringName.Serialize(value);
+                _logger.Info(string.Format("Function:{0}, Received:[{1}]", funcName, jsonStringResult));
+
+                _oLastWaferTime = _functionService.GetLastWaferTimeByEQP(_dbTool, _configuration, _logger, value.ToolID, value.LotID);
+                
+                tmpMsg = string.Format("Avg last wafer time: [{0}] hours[{1}] minutes,  [Tool ID: {2} | Lot ID: {3}]", _oLastWaferTime.Hours, _oLastWaferTime.Minutes, value.ToolID, value.LotID);
+
+                foo = new APIResult()
+                {
+                    Success = true,
+                    State = "OK",
+                    Message = tmpMsg
+                };
+
+            }
+            catch (Exception ex)
+            {
+                foo = new APIResult()
+                {
+                    Success = true,
+                    State = "NG",
+                    Message = ex.Message
+                };
+            }
+            finally
+            {
+            }
+
+            return foo;
+        }
+        public class clasAvgScale
+        {
+            public string ToolID { get; set; }
+            public string LotID { get; set; }
+        }
     }
 }

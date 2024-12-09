@@ -5,6 +5,8 @@ VisualStudioVersion = 17.1.32319.34
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RTDWebAPI", "RTDWebAPI\RTDWebAPI.csproj", "{7F7A5A63-B27C-4E06-A868-14C1FC249C3C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GyroSystemControl", "GyroSystemController\GyroSystemControl.csproj", "{97A4B871-B4CB-43AB-9D27-DDF5805C138E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{7F7A5A63-B27C-4E06-A868-14C1FC249C3C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7F7A5A63-B27C-4E06-A868-14C1FC249C3C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7F7A5A63-B27C-4E06-A868-14C1FC249C3C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{97A4B871-B4CB-43AB-9D27-DDF5805C138E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{97A4B871-B4CB-43AB-9D27-DDF5805C138E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{97A4B871-B4CB-43AB-9D27-DDF5805C138E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{97A4B871-B4CB-43AB-9D27-DDF5805C138E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -233,6 +233,9 @@ namespace RTDWebAPI.Controllers
                                         sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
                                         _dbTool.SQLExec(sql, out tmpMsg, true);
 
+                                        tmpMsg = string.Format("Reset carrier locate by func [{0}, 1]. carrier id [{1}]", funcName, value.CarrierID);
+                                        _logger.Info(tmpMsg);
+
                                         //更新新的Carrier Locate
                                         sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(oCarrierLoc, haveMetalRing));
                                         _dbTool.SQLExec(sql, out tmpMsg, true);
@@ -262,40 +265,53 @@ namespace RTDWebAPI.Controllers
 
                                 if (dtTemp.Rows.Count > 0)
                                 {
-                                    CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
-                                    oCarrierLoc.CarrierID = value.CarrierID;
-                                    oCarrierLoc.TransferState = PortState;
-                                    oCarrierLoc.Location = value.PortID;
-                                    oCarrierLoc.LocationType = "EQP";
+                                    if (!PortState.Equals("4") && !PortState.Equals("1"))
+                                    {
 
-                                    //清除舊的Carrier Locate
-                                    sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
-                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                        CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
+                                        oCarrierLoc.CarrierID = value.CarrierID;
+                                        oCarrierLoc.TransferState = PortState;
+                                        oCarrierLoc.Location = value.PortID;
+                                        oCarrierLoc.LocationType = "EQP";
+
+                                        //清除舊的Carrier Locate
+                                        sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
+                                        _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                        tmpMsg = string.Format("Reset carrier locate by func [{0}, 2]. carrier id [{1}]", funcName, value.CarrierID);
+                                        _logger.Info(tmpMsg);
+                                    }
                                 }
                                 else
                                 {
                                     if (!value.LotID.Equals(""))
                                     {
-                                        ///Carrier is empty
-                                        ///lotid not empty, can use lotid to get last carrierid.
-                                        sql = string.Format(_BaseDataService.SelectTableCarrierAssociate3ByLotid(value.LotID));
-                                        dtTemp = _dbTool.GetDataTable(sql);
-
-                                        if (dtTemp.Rows.Count > 0)
+                                        if (!PortState.Equals("4") && !PortState.Equals("1"))
                                         {
-                                            CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
-                                            oCarrierLoc.CarrierID = dtTemp.Rows[0]["carrier_id"].ToString();
-                                            oCarrierLoc.TransferState = PortState;
-                                            oCarrierLoc.Location = value.PortID;
-                                            oCarrierLoc.LocationType = "EQP";
+                                            ///Carrier is empty
+                                            ///lotid not empty, can use lotid to get last carrierid.
+                                            sql = string.Format(_BaseDataService.SelectTableCarrierAssociate3ByLotid(value.LotID));
+                                            dtTemp = _dbTool.GetDataTable(sql);
 
-                                            //清除舊的Carrier Locate
-                                            sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
-                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            if (dtTemp.Rows.Count > 0)
+                                            {
+                                                CarrierLocationUpdate oCarrierLoc = new CarrierLocationUpdate();
+                                                oCarrierLoc.CarrierID = dtTemp.Rows[0]["carrier_id"].ToString();
+                                                oCarrierLoc.TransferState = PortState;
+                                                oCarrierLoc.Location = value.PortID;
+                                                oCarrierLoc.LocationType = "EQP";
 
-                                            //更新新的Carrier Locate
-                                            sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(oCarrierLoc, haveMetalRing));
-                                            _dbTool.SQLExec(sql, out tmpMsg, true);
+                                                //清除舊的Carrier Locate
+                                                sql = String.Format(_BaseDataService.CarrierLocateReset(oCarrierLoc, haveMetalRing));
+                                                _dbTool.SQLExec(sql, out tmpMsg, true);
+
+                                                tmpMsg = string.Format("Reset carrier locate by func [{0}, 3]. carrier id [{1}]", funcName, value.CarrierID);
+                                                _logger.Info(tmpMsg);
+
+                                                //更新新的Carrier Locate
+                                                sql = String.Format(_BaseDataService.UpdateTableCarrierTransfer(oCarrierLoc, haveMetalRing));
+                                                _dbTool.SQLExec(sql, out tmpMsg, true);
+                                            }
                                         }
                                     }
                                 }

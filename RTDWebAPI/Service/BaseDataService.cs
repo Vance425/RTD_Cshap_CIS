@@ -116,6 +116,7 @@ namespace RTDWebAPI.Service
         public string InsertTableWorkinprocess_Sch(SchemaWorkInProcessSch _workInProcessSch, string _table)
         {
             string _startDt = "";
+            string _cmdCurrentState = " ";
 
             if(_workInProcessSch.Cmd_Current_State.Equals("NearComp"))
             {
@@ -126,10 +127,15 @@ namespace RTDWebAPI.Service
                 _startDt = "sysdate";
             }
 
+            if(!_workInProcessSch.Cmd_Current_State.Equals(""))
+                _cmdCurrentState = _workInProcessSch.Cmd_Current_State;
+            else
+                _cmdCurrentState = " ";
+
             //string _table = "workinprocess_sch";
-            string _values = string.Format(@"'{0}', '{1}', '{2}', '{3}', ' ', ' ', '{4}', '{5}', '{6}', '{7}', {8}, {9}, '*', 0, '{10}', '{11}', sysdate, sysdate, {12}, {13}, {14}, {15}",
+            string _values = string.Format(@"'{0}', '{1}', '{2}', '{3}', ' ', '{16}', '{4}', '{5}', '{6}', '{7}', {8}, {9}, '*', 0, '{10}', '{11}', sysdate, sysdate, {12}, {13}, {14}, {15}",
                             _workInProcessSch.UUID, _workInProcessSch.Cmd_Id, _workInProcessSch.Cmd_Type, _workInProcessSch.EquipId, _workInProcessSch.CarrierId,
-                            _workInProcessSch.CarrierType, _workInProcessSch.Source, _workInProcessSch.Dest, _workInProcessSch.Priority, _workInProcessSch.Replace, _workInProcessSch.LotID, _workInProcessSch.Customer, _workInProcessSch.Quantity, _workInProcessSch.Total, _workInProcessSch.IsLastLot, _startDt);
+                            _workInProcessSch.CarrierType, _workInProcessSch.Source, _workInProcessSch.Dest, _workInProcessSch.Priority, _workInProcessSch.Replace, _workInProcessSch.LotID, _workInProcessSch.Customer, _workInProcessSch.Quantity, _workInProcessSch.Total, _workInProcessSch.IsLastLot, _startDt, _cmdCurrentState);
 
 
             string strSQL = string.Format(@"insert into {0} (uuid, cmd_id, cmd_type, equipid, cmd_state, cmd_current_state, carrierid, carriertype, source, dest, priority, replace, back, isLock, lotid, customer, create_dt, modify_dt, quantity, total, islastlot, start_dt)
@@ -376,7 +382,7 @@ order by e.potd desc, d.lot_age desc, p.lastmodify_dt asc", _portid, _carrierTyp
             //a.lot_id as lotid, c.lotType, c.stage, c.state, c.CUSTOMERNAME, c.HOLDCODE, c.HOLDREAS
             strSQL = string.Format(@"select distinct a.carrier_id, a.tag_type, a.associate_state, a.lot_id, a.quantity, a.last_lot_id, a.last_change_station,
                                     a.create_by, b.carrier_asso, b.equip_asso, b.equiplist, b.state, b.customername, b.stage, b.partid, b.lottype, 
-                                    b.rtd_state, b.sch_seq, b.islock, b.total_qty, b.lockmachine, b.comp_qty, b.custdevice, b.lotid, a.quantity, case when b.total_qty is null then to_number(a.total) else b.total_qty end as total_qty,  b.priority from CARRIER_LOT_ASSOCIATE a
+                                    b.rtd_state, b.sch_seq, b.islock, b.total_qty, b.lockmachine, b.comp_qty, b.custdevice, b.lotid, a.quantity, case when b.total_qty is null then to_number(a.total) else b.total_qty end as total_qty,  nvl(b.priority, 0) as priority from CARRIER_LOT_ASSOCIATE a
                                             left join LOT_INFO b on b.lotid = a.lot_id
                                             where a.carrier_id = '{0}'", CarrierID);
             return strSQL;
@@ -738,7 +744,7 @@ left join carrier_transfer ct on ct.carrier_id=ca.carrier_id
             string strSQL = string.Format(@"select * from LOT_INFO a left join carrier_lot_associate b on b.lot_id = a.lotid left join carrier_transfer c on c.carrier_id = b.carrier_id left join {0} c1 on c1.lotid=b.lot_id  where a.rtd_state not in ('HOLD','PROC','DELETED', 'COMPLETED') 
                             and to_date(to_char(trunc(a.starttime, 'DD'),'yyyy/MM/dd HH24:mi:ss'), 'yyyy/MM/dd HH24:mi:ss') <= sysdate
                             and c.location_type in ('ERACK','STK')
-                            order by a.stage, a.rtd_state, c1.potd asc, a.lot_age desc, a.priority asc", _table);
+                            order by a.stage, a.rtd_state, c1.potd asc, a.lot_age desc, a.priority desc", _table);
             return strSQL;
         }
         public string SelectTableProcessLotInfoByCustomer(string _customerName, string _equip)
@@ -1235,6 +1241,18 @@ left join carrier_transfer ct on ct.carrier_id=ca.carrier_id
 
             return strSQL;
         }
+        public string SyncNextStageOfLotNoPriority(string _resourceTable, string _lotid)
+        {
+            string strSQL = "";
+
+            strSQL = string.Format(@"update lot_info set (carrier_asso,equip_asso,equiplist,lastmodify_dt,rtd_state,
+                                        state,wfr_qty,dies_qty,stage,lottype,lot_age,planstarttime,starttime,lockmachine,comp_qty) 
+                                        = (select 'N', 'N', '', sysdate, 'INIT', state,wfr_qty,
+                                        dies_qty,stage,lottype,lot_age,planstarttime,starttime,0,0 from {0} where lotid = '{1}')
+                                        where lotid = '{1}'", _resourceTable, _lotid);
+
+            return strSQL;
+        }
         public string UpdateLotInfoWhenCOMP(string _commandId, string _table)
         {
             string strSQL = string.Format(@"update lot_info set RTD_state='COMPLETED', sch_seq=0, lastModify_dt=sysdate where lotid in (
@@ -1531,7 +1549,7 @@ left join carrier_transfer ct on ct.carrier_id=ca.carrier_id
             string strSQL = "";
             string strSet = "";
 
-            strSQL = string.Format("select distinct a.carrier_id, a.lot_id, b.locate, b.portno, b.location_type, c.customername, c.partid, c.lottype, c.stage, a.quantity, d.stage as stage1 from CARRIER_LOT_ASSOCIATE a left join CARRIER_TRANSFER b on b.carrier_id = a.carrier_id left join LOT_INFO c on c.lotid = a.lot_id left join {0} d on c.lotid = d.lotid where b.location_type in ('ERACK','STK') and a.lot_id is not null and locate is not null", _table);
+            strSQL = string.Format("select distinct a.carrier_id, a.lot_id, b.locate, b.portno, b.location_type, c.customername, c.partid, c.lottype, c.stage, a.quantity, d.stage as stage1, b.info_update_dt from CARRIER_LOT_ASSOCIATE a left join CARRIER_TRANSFER b on b.carrier_id = a.carrier_id left join LOT_INFO c on c.lotid = a.lot_id left join {0} d on c.lotid = d.lotid where b.location_type in ('ERACK','STK') and a.lot_id is not null and locate is not null", _table);
             return strSQL;
         }
         public string ResetCarrierLotAssociateNewBind(string _carrierId)
@@ -1952,7 +1970,7 @@ left join carrier_transfer ct on ct.carrier_id=ca.carrier_id
 
             strSQL = string.Format(@"select distinct a.carrier_id, a.carrier_type, a.associate_state, a.lot_id, a.quantity, b.type_key, b.carrier_state, b.locate, b.portno, 
                                 b.enable, b.location_type, b.metal_ring, b.reserve, b.state, c.equiplist, c.state, c.customername, c.stage, c.partid,
-                                c.lotType, c.rtd_state, case when c.total_qty is null then to_number(a.total) else c.total_qty end as total_qty from CARRIER_LOT_ASSOCIATE a 
+                                c.lotType, c.rtd_state, case when c.total_qty is null then to_number(a.total) else c.total_qty end as total_qty, b.info_update_dt  from CARRIER_LOT_ASSOCIATE a 
                                 left join CARRIER_TRANSFER b on b.carrier_id=a.carrier_id 
                                 left join LOT_INFO c on c.lotid = a.lot_id {0}", tmpWhere);
             return strSQL;
@@ -2295,11 +2313,11 @@ order by d.stage, c1.potd asc, e.priority asc, c.lot_age desc", _lotTable, _cise
 
             if (_manualMode)
             {
-                strSQL = String.Format("update eqp_status set manualmode = 1 where equipid = '{0}'", _equip);
+                strSQL = String.Format("update eqp_status set manualmode=1, modify_dt=sysdate where equipid = '{0}'", _equip);
             }
             else
             {
-                strSQL = String.Format("update eqp_status set manualmode = 0 where equipid = '{0}'", _equip);
+                strSQL = String.Format("update eqp_status set manualmode=0, modify_dt=sysdate where equipid = '{0}'", _equip);
             }
 
             return strSQL;
@@ -2773,7 +2791,7 @@ order by d.stage, c1.potd asc, e.priority asc, c.lot_age desc", _lotTable, _cise
         }
         public string QueryCarrierOnRack(string _workgroup, string _equip)
         {
-            string strSQL = string.Format(@"select d.lot_id, d.carrier_id from (select b.lot_id, a.carrier_id from carrier_transfer a left join carrier_lot_associate b on b.carrier_id = a.carrier_id where a.carrier_state = 'ONLINE' and a.location_type = 'ERACK' and a.locate in (select ""erackID"" from rack where ""groupID"" in (select in_erack from workgroup_set where workgroup = '{0}') union select ""erackID"" from rack where ""erackID"" in (select in_erack from workgroup_set where workgroup = '{0}'))) d left join lot_info c on c.lotid = d.lot_id where instr(c.equiplist, '{1}') <= 0", _workgroup, _equip);
+            string strSQL = string.Format(@"select d.lot_id, d.carrier_id from (select b.lot_id, a.carrier_id from carrier_transfer a left join carrier_lot_associate b on b.carrier_id = a.carrier_id where a.carrier_state = 'ONLINE' and a.location_type in ('ERACK') and a.locate in (select ""erackID"" from rack where ""groupID"" in (select in_erack from workgroup_set where workgroup = '{0}')) union select b.lot_id, a.carrier_id from carrier_transfer a left join carrier_lot_associate b on b.carrier_id = a.carrier_id where a.carrier_state = 'ONLINE' and a.location_type in ('STK') and a.locate like (select ""erackID"" || '%' from rack where ""erackID"" in (select in_erack from workgroup_set where workgroup = 'RDL'))) d left join lot_info c on c.lotid = d.lot_id where instr(c.equiplist, '{1}') <= 0", _workgroup, _equip);
 
             return strSQL;
         }
@@ -3393,7 +3411,7 @@ values('ResponseTime', 'ResponseTime', '{0}', 'RTD', sysdate, 'RTD server respon
 
             strWhere = string.Format(@"where toolid='{0}' and waferprocess_flag='C' and lotid = '{1}'", _equip, _lotid);
 
-            strSQL = string.Format(@"select lotid, avg(hour1) avgHours, avg(minute1) avgMinutes from (
+            strSQL = string.Format(@"select lotid, floor(avg(hour1)) avgHours, round(avg(minute1),2) avgMinutes from (
 select lotid, extract(hour from to_timestamp(to_char(wafer_end_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss') -to_timestamp(to_char(wafer_start_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss')) hour1,
 extract(minute from to_timestamp(to_char(wafer_end_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss') -to_timestamp(to_char(wafer_start_time, 'yyyy/MM/dd hh24:Mi:ss'), 'yyyy/MM/dd hh24:Mi:ss')) minute1
 from {0} {1} order by wafer_start_time
@@ -3420,6 +3438,102 @@ where equipid='{0}' and cmd_type='UNLOAD' and cmd_state in ('Success')
 group by cmd_id, equipid, cmd_state) b on a.cmd_id=b.cmd_id
 where b.min_dt is not null and a.max_dt > sysdate - interval '7' day
  order by a.max_dt desc) c group by c.equipid", _equip);
+
+            return strSQL;
+        }
+
+        public string CarrierTransferDTUpdate(string _carrierid, string _updateType)
+        {
+            string strSQL = "";
+            string tmpSQL = "";
+            string strSet = "";
+            string tmpWhere = "";
+            string strWhere = "";
+
+            if (!_carrierid.Equals(""))
+            {
+                tmpWhere = string.Format("where carrier_id = '{0}'", _carrierid);
+            }
+
+            if (_updateType.ToLower().Equals("infoupdate"))
+            {
+                strSet = string.Format("set info_update_dt = sysdate");
+            }
+            else if (_updateType.ToLower().Equals("locateupdate"))
+            {
+                strSet = string.Format("set loc_update_dt = sysdate");
+            }
+
+            if (!tmpWhere.Equals(""))
+            {
+                tmpSQL = @"update carrier_transfer {0} {1}";
+
+                strSQL = string.Format(tmpSQL, strSet, tmpWhere);
+            }
+
+            return strSQL;
+        }
+        public string QueryScale(string _parameter)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+            strWhere = string.Format(@"where parameter = 'AvgScale'");
+
+            strSQL = string.Format("select * from rtd_default_set {0}", strWhere);
+
+            return strSQL;
+        }
+        public string GetEQPortLastLot(string _port)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+            string[] _portArray;
+            string tmp = "";
+
+            try
+            {
+                if (_port.IndexOf("_LP") > 0)
+                {
+                    _portArray = _port.Split("_LP");
+                }
+                else
+                {
+                    tmp = "NONE_LP0";
+                    _portArray = _port.Split("_LP");
+                }
+
+                strWhere = string.Format(@"where carrier_id in (select carrier_id from carrier_transfer where locate = '{0}' and portno = {1})", _portArray[0], _portArray[1]);
+
+                strSQL = string.Format("select nvl(lot_id, last_lot_id) LotID from carrier_lot_associate {0}", strWhere);
+            }
+            catch(Exception ex) { }
+
+            return strSQL;
+        }
+        public string QueryNearCompletedByPortID(string _portID)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+            strWhere = string.Format(@"where cmd_current_state='NearComp' and (source = '{0}' or dest = '{0}')", _portID);
+
+            strSQL = string.Format("select cmd_id from workinprocess_sch {0}", strWhere);
+
+            return strSQL;
+        }
+        public string ResetStartDtByCmdID(string _cmdID)
+        {
+            string strSQL = "";
+            string strSet = "";
+            string strWhere = "";
+
+            strWhere = string.Format(@"where cmd_id = '{0}'", _cmdID);
+
+            strSQL = string.Format("update workinprocess_sch set cmd_current_state=' ', modify_dt=sysdate, start_dt=sysdate  {0}", strWhere);
 
             return strSQL;
         }

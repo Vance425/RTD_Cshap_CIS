@@ -86,6 +86,7 @@ namespace RTDWebAPI.Controllers
             string v_HOLDREAS = "";
             string v_POTD = "";
             string v_WAFERLOT = "";
+            string v_Force = "";
 
             try
             {
@@ -220,6 +221,44 @@ namespace RTDWebAPI.Controllers
                                 break;
                         }
 
+                        try
+                        {
+                            if (v_CUSTOMERNAME.Equals(""))
+                            {
+                                sql = _BaseDataService.SelectTableLotInfoByLotid(_lotId);
+                                dt2 = _dbTool.GetDataTable(sql);
+
+                                if (dt2.Rows.Count > 0)
+                                {
+                                    v_CUSTOMERNAME = dt2.Rows[0]["CUSTOMERNAME"].ToString().Equals("") ? "" : dt2.Rows[0]["CUSTOMERNAME"].ToString();
+                                    v_PARTID = dt2.Rows[0]["PARTID"].ToString().Equals("") ? "" : dt2.Rows[0]["PARTID"].ToString();
+                                    v_LOTTYPE = dt2.Rows[0]["LOTTYPE"].ToString().Equals("") ? "" : dt2.Rows[0]["LOTTYPE"].ToString();
+                                }
+                            }
+
+                            sql = _BaseDataService.QueryErackInfoByLotID(_configuration["eRackDisplayInfo:contained"], _lotId);
+                            dtTemp = _dbTool.GetDataTable(sql);
+
+                            if (dtTemp.Rows.Count > 0)
+                            {
+                                v_STAGE = dtTemp.Rows[0]["STAGE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["STAGE"].ToString();
+                                v_AUTOMOTIVE = dtTemp.Rows[0]["AUTOMOTIVE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["AUTOMOTIVE"].ToString();
+                                v_STATE = dtTemp.Rows[0]["STATE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["STATE"].ToString();
+                                v_HOLDCODE = dtTemp.Rows[0]["HOLDCODE"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HOLDCODE"].ToString();
+                                v_TURNRATIO = dtTemp.Rows[0]["TURNRATIO"].ToString().Equals("") ? "0" : dtTemp.Rows[0]["TURNRATIO"].ToString();
+                                v_EOTD = dtTemp.Rows[0]["EOTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["EOTD"].ToString();
+                                v_POTD = dtTemp.Rows[0]["POTD"].ToString().Equals("") ? "" : dtTemp.Rows[0]["POTD"].ToString();
+                                v_HOLDREAS = dtTemp.Rows[0]["HoldReas"].ToString().Equals("") ? "" : dtTemp.Rows[0]["HoldReas"].ToString();
+                                v_WAFERLOT = dtTemp.Rows[0]["waferlotid"].ToString().Equals("") ? "" : dtTemp.Rows[0]["waferlotid"].ToString();
+                                v_Force = "false";
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            tmpMsg = string.Format("[AutoSentInfoUpdate: Column Issue. {0}]", ex.Message);
+                            _logger.Debug(tmpMsg);
+                        }
+
                         foo = new ApiResultQuantityInfo()
                         {
                             State = "OK",
@@ -229,17 +268,17 @@ namespace RTDWebAPI.Controllers
                             Quantity = _quantity,
                             ErrorCode = "",
                             Message = "",
-                            Stage = "",
-                            Cust = "",
-                            PartID = "",
-                            LotType = "",
-                            Automotive = "",
-                            HoldCode = "",
-                            TurnRatio = 0,
-                            EOTD = "",
-                            WaferLot = "",
-                            HoldReas = "",
-                            POTD = ""
+                            Stage = v_STAGE,
+                            Cust = v_CUSTOMERNAME,
+                            PartID = v_PARTID,
+                            LotType = v_LOTTYPE,
+                            Automotive = v_AUTOMOTIVE,
+                            HoldCode = v_HOLDCODE,
+                            TurnRatio = v_TURNRATIO.Equals("") ? 0 : float.Parse(v_TURNRATIO),
+                            EOTD = v_EOTD,
+                            WaferLot = v_WAFERLOT,
+                            HoldReas = v_HOLDREAS,
+                            POTD = v_POTD
                         };
                     }
                     catch(Exception ex)

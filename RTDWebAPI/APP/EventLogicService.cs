@@ -32,12 +32,30 @@ namespace RTDWebAPI.APP
             int minPortThdComp = 3;
             int maxThdWorker = 5;
             int maxPortThdComp = 5;
+            int threadTimeoutLimit = 2;
+            string timeoutunit = "minutes";
+            bool _swThredstimeout = false;
+            ////Threads controll
+            int iCurrentUI = 0;
+            int iCurrentllyUse = 0;
+            int iCurrentllySch = 0;
+            int iCurrentllylis = 0;
+            int iMaxThreads = 0;
+            int iminThreads = 0;
+            int iworkerThreads = 0;
+            int iio1Threads = 0;
+            int iio2Threads = 0;
+            int iio3Threads = 0;
+
             try
             {
                 minThdWorker = _configuration["ThreadPools:minThread:workerThread"] is not null ? int.Parse(_configuration["ThreadPools:minThread:workerThread"]) : minThdWorker;
                 minPortThdComp = _configuration["ThreadPools:minThread:portThread"] is not null ? int.Parse(_configuration["ThreadPools:minThread:portThread"]) : minThdWorker; ;
-                maxThdWorker = _configuration["ThreadPools:maxThread:workerThread"] is not null ? int.Parse(_configuration["ThreadPools:maxThread:workerThread"]) : minThdWorker; ;
+                maxThdWorker = _configuration["ThreadPools:maxThread:workerThread"] is not null ? int.Parse(_configuration["ThreadPools:maxThread:workerThread"]) : minThdWorker;
                 maxPortThdComp = _configuration["ThreadPools:maxThread:portThread"] is not null ? int.Parse(_configuration["ThreadPools:maxThread:portThread"]) : minThdWorker; ;
+                threadTimeoutLimit = _configuration["ThreadPools:ThreadTimeoutLimit:timeoutlimit"] is not null ? int.Parse(_configuration["ThreadPools:ThreadTimeoutLimit:timeoutlimit"]) : threadTimeoutLimit;
+                timeoutunit = _configuration["ThreadPools:ThreadTimeoutLimit:timeunit"] is not null ? _configuration["ThreadPools:ThreadTimeoutLimit:timeunit"] : timeoutunit;
+                _swThredstimeout = _configuration["ThreadPools:ThreadTimeoutLimit:enabled"] is not null ? _configuration["ThreadPools:ThreadTimeoutLimit:enabled"].Equals(true) ? true : false : _swThredstimeout;
                 RTDServerName = _configuration["AppSettings:Server"] is not null ? _configuration["AppSettings:Server"] : "RTDServer";
                 _bKeepUI = _configuration["KeepUI:Enable"] is null ? true : _configuration["KeepUI:Enable"].ToLower().Equals("false") ? false : true;
                 _changeTime = _configuration["ChangerServerTime:Time"] is null ? 5 : int.Parse(_configuration["ChangerServerTime:Time"].ToString());
@@ -185,18 +203,11 @@ namespace RTDWebAPI.APP
                 }
 
                 System.Threading.WaitCallback waitCallback = null;
-                int iCurrentUI = 0;
-                int iCurrentllyUse = 0;
-                int iCurrentllySch = 0;
-                int iCurrentllylis = 0;
-                int iMaxThreads = 0;
-                int iminThreads = 0;
-                int iworkerThreads = 0;
-                int iio1Threads = 0;
-                int iio2Threads = 0;
-                int iio3Threads = 0;
+                double dbusyThreads = 0;
                 string _tempFunc = "";
                 string _lastStepTime = "";
+                string _lastProcessTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
+                string _ThreadsWaitingTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
 
                 while (true)
                 {
@@ -214,13 +225,16 @@ namespace RTDWebAPI.APP
                             _alarmDetail
                         };
 
+                        if (_listDBSession.Count > 0)
+                            _dbTool = _listDBSession[0];
+
                         if (_serviceOn)
                         {
                             try
                             {
                                 if (_listDBSession.Count < uidbAccessNum)
                                 {
-                                    for (int i = 1; i <= uidbAccessNum; i++)
+                                    for (int i = _listDBSession.Count; i <= uidbAccessNum; i++)
                                     {
                                         ///build db connection for ui.
                                         dbTool = new DBTool(tmpConnectString, tmpDatabase, tmpAutoDisconn, out msg);
@@ -230,15 +244,15 @@ namespace RTDWebAPI.APP
                                 }
 
                                 _sql = _BaseDataService.QueryRTDServer(RTDServerName);
-                                dtTemp = dbTool.GetDataTable(_sql);
+                                dtTemp = _dbTool.GetDataTable(_sql);
                                 if (dtTemp.Rows.Count <= 0)
                                 {
-                                        _serviceOn = false;
+                                    _serviceOn = false;
                                 }
                                 else
                                 {
                                     _sql = _BaseDataService.QueryResponseTime(dtTemp.Rows[0]["paramvalue"].ToString());
-                                    dtTemp2 = dbTool.GetDataTable(_sql);
+                                    dtTemp2 = _dbTool.GetDataTable(_sql);
                                     if (dtTemp2.Rows.Count > 0)
                                     {
                                         _responseTime = dtTemp2.Rows[0]["responseTime"].ToString();
@@ -262,14 +276,14 @@ namespace RTDWebAPI.APP
                         else
                         {
                             _sql = _BaseDataService.QueryRTDServer("");
-                            dtTemp = dbTool.GetDataTable(_sql);
+                            dtTemp = _dbTool.GetDataTable(_sql);
                             if (dtTemp.Rows.Count > 0)
                             {
                                 _serviceExist = true;
 
                                 //Get Master response time
                                 _sql = _BaseDataService.QueryResponseTime(dtTemp.Rows[0]["paramvalue"].ToString());
-                                dtTemp2 = dbTool.GetDataTable(_sql);
+                                dtTemp2 = _dbTool.GetDataTable(_sql);
                                 if (dtTemp2.Rows.Count > 0)
                                 {
                                     if (!dtTemp.Rows[0]["paramvalue"].ToString().Equals(RTDServerName))
@@ -289,7 +303,7 @@ namespace RTDWebAPI.APP
                                         else
                                         {
                                             _sql = _BaseDataService.QueryResponseTime(RTDServerName);
-                                            dtTemp3 = dbTool.GetDataTable(_sql);
+                                            dtTemp3 = _dbTool.GetDataTable(_sql);
                                             _responseTime = dtTemp3.Rows[0]["responseTime"].ToString();
 
                                             if (_functionService.TimerTool("seconds", _responseTime) > 15)
@@ -320,31 +334,57 @@ namespace RTDWebAPI.APP
                         ThreadPool.GetMinThreads(out iminThreads, out iio2Threads);
                         ThreadPool.GetAvailableThreads(out iworkerThreads, out iio3Threads);
 #if DEBUG
-                        tmpMsg = string.Format("{6} Thread usage: ThreadID [{7}], iMaxThreads[{0}], iminThreads [{1}], iworkerThreads [{2}], iio1Threads [{3}], iio2Threads [{4}], iio3Threads [{5}]", iMaxThreads, iminThreads, iworkerThreads, iio1Threads, iio2Threads, iio3Threads, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), Thread.CurrentThread.ManagedThreadId);
+                        tmpMsg = string.Format("{6} Thread usage: ThreadID [{7}], iMaxThreads[{0}], iminThreads [{1}], iworkerThreads [{2}], iio1Threads [{3}], iio2Threads [{4}], iio3Threads [{5}], _listDBSession [{8}]", iMaxThreads, iminThreads, iworkerThreads, iio1Threads, iio2Threads, iio3Threads, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), Thread.CurrentThread.ManagedThreadId, _listDBSession.Count);
                         Console.WriteLine(tmpMsg);
 #else
                         //do nothing
 #endif
-                        iIdle = iio3Threads - iworkerThreads;
-                        iCurrentllyUse = maxThdWorker - iio3Threads;
+                        ///iworkerThraeads 可用的線程數量
+                        ///iio3Threads 可用的異步線程數量
+                        iCurrentllyUse = iMaxThreads - iworkerThreads;//最大線程數-當前可用線程數=當前使用線程數
+                        iIdle = iMaxThreads - iCurrentllyUse;//最大線程數-可用線程數=idle線程數量
                         iCurrentUI = 0;
 
 
-                        if (iworkerThreads < uidbAccessNum)
+                        if (iIdle < uidbAccessNum)
                         {
-
                             tmpMsg = string.Format("{6} RTD Stop, keep the thread for UI to use: Max Thread[{0}], CurrentUse [{1}], Completed [{2}], Idle [{3}], UI use [{4}], " +
-                                "iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iworkerThreads, iio3Threads, iIdle, iCurrentUI, 
+                                "iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iworkerThreads, iio3Threads, iIdle, iCurrentUI,
                                 iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
-                            _logger.Info(tmpMsg);
 
-                            if(_bKeepUI)
+                            if (_functionService.TimerTool("minutes", _lastProcessTime) >= 3)
+                            {
+                                _logger.Info(tmpMsg);
+                                _lastProcessTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
+                            }
+
+                            if (_functionService.TimerTool(timeoutunit, _ThreadsWaitingTime) >= threadTimeoutLimit)
+                            {
+                                tmpMsg = string.Format("Threads Issue, RTD will try to restart RTD service. [max:{0}, current use:{1}, idle:{2}]", maxThdWorker, iCurrentllyUse, iIdle);
+                                _logger.Info(tmpMsg);
+                                _ThreadsWaitingTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
+
+                                if(_swThredstimeout)
+                                    goto IssueLogic;
+                            }
+
+                            //_ThreadsWaitingTime
+                            //threadTimeoutLimit
+
+                            if (_bKeepUI)
                                 continue;
                         }
-
-                        if(iio3Threads < maxThdWorker)
+                        else
                         {
-                            tmpMsg = string.Format("{6} Complete down, the thread usage: Max Thread[{0}], CurrentUse [{1}],Completed [{2}], Idle [{3}], UI use [{4}], iCurrentllyUse [{5}], _listDBSession [{7}]", maxThdWorker, iCurUse, iCompThd, iIdle, iCurrentUI, iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
+                            if (_swThredstimeout)
+                                _ThreadsWaitingTime = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
+                        }
+
+                        dbusyThreads = uidbAccessNum + iCurrentllyUse;
+                        if (dbusyThreads >= maxThdWorker)
+                        {
+                            tmpMsg = string.Format("{6} RTD threads busy, the thread usage: Max Thread[{0}], AvailableUse [{1}],Completed [{2}], Idle [{3}], UI use [{4}], iCurrentllyUse [{5}], _listDBSession [{7}]"
+                                , maxThdWorker, iworkerThreads, iio3Threads, iIdle, iCurrentUI, iCurrentllyUse, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss"), _listDBSession.Count);
                             _logger.Info(tmpMsg);
                         }
                         //Idle thread < ui access, do not run logic for schedule and listen
@@ -401,30 +441,109 @@ namespace RTDWebAPI.APP
                             }
                         }
 
-                        for (int i = 0; i < _listDBSession.Count; i++)
+                        int _totalsession = 0;
+                        List<int> lstRemoveSeseion = new List<int>() { };
+                        bool _exception = false;
+                        if(_listDBSession.Count>0)
                         {
-                            ///Database re-connection logic
-                            try
-                            {
-                                dbTool = _listDBSession[i];
-                                if (!dbTool.IsConnected)
-                                {
-                                    ///When db access disconnect will try to connection to database.
-                                    lock (_listDBSession)
-                                    {
-                                        dbTool = new DBTool(tmpConnectString, tmpDatabase, tmpAutoDisconn, out msg);
-                                        dbTool._dblogger = _logger;
-                                        _listDBSession[i] = dbTool;
+                            _totalsession = _listDBSession.Count;
 
-                                        if (!msg.Equals(""))
-                                            _logger.Info(string.Format("[Database retry to connect.][{0}]", msg));
+                            for (int i = 0; i < _totalsession; i++)
+                            {
+                                ///Database re-connection logic
+                                try
+                                {
+                                    dbTool = _listDBSession[i];
+                                    if (!dbTool.IsConnected)
+                                    {
+                                        ///When db access disconnect will try to connection to database.
+                                        lock (_listDBSession)
+                                        {
+                                            dbTool = new DBTool(tmpConnectString, tmpDatabase, tmpAutoDisconn, out msg);
+                                            dbTool._dblogger = _logger;
+                                            _listDBSession[i] = dbTool;
+
+                                            if (!msg.Equals(""))
+                                            {                                                
+                                                _logger.Info(string.Format("[Database retry to connect.][{0}]", msg));
+                                                lstRemoveSeseion.Add(i);
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        try {
+                                            _exception = false;
+
+                                            _sql = _BaseDataService.QueryRTDServer(RTDServerName);
+                                            dtTemp = dbTool.GetDataTable(_sql);
+                                        }
+                                        catch(Exception ex) {
+                                            tmpMsg = "";
+                                            lock (lstRemoveSeseion)
+                                            {
+                                                if (tmpMsg.Equals(""))
+                                                {
+                                                    _logger.Info(string.Format("[Database Issue, auto disabled session. cause [{0}]", ex.Message));
+                                                    //lstRemoveSeseion.Add(i);
+                                                    _exception = true;
+                                                }
+                                            }
+                                        }
+
+                                        if (_exception)
+                                        {
+                                            dbTool.DisConnectDB(out tmpMsg);
+                                            if(!tmpMsg.Equals(""))
+                                                _logger.Info(string.Format("Databse session disconnection result [{0}]", tmpMsg));
+                                            lstRemoveSeseion.Add(i);
+                                        }
                                     }
                                 }
-
+                                catch (Exception ex) { }
                             }
-                            catch(Exception ex) { }
+
+                            int j = 0;
+                            foreach(int k in lstRemoveSeseion)
+                            {
+                                try {
+                                    if (_listDBSession.Count > 0)
+                                    {
+                                        dbTool = _listDBSession[k-j];
+
+                                        if (!dbTool.IsConnected)
+                                        {
+                                            lock (_listDBSession)
+                                            {
+                                                _logger.Info(string.Format("[Database session remove number [{0}]", k));
+                                                _listDBSession.Remove(_listDBSession[k - j]);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            try
+                                            {
+                                                dbTool.DisConnectDB(out tmpMsg);
+                                            }
+                                            catch (Exception ex) { }
+
+                                            lock (_listDBSession)
+                                            {
+                                                _logger.Info(string.Format("[dbTool state incorrect, still remove database session. listDBSession [{0}], Remove number [{1}]", _listDBSession.Count, k));
+                                                _listDBSession.Remove(_listDBSession[k - j]);
+                                            }
+                                        }
+                                        j++;
+                                    }
+                                }
+                                catch(Exception ex) { }
+                            }
                         }
-                        //inUse--;
+
+                        if (_listDBSession.Count <= 0)
+                            goto IssueLogic;
+
+                            //inUse--;
                         Thread.Sleep(100);
                     }
                     catch (Exception ex) {
@@ -438,6 +557,33 @@ namespace RTDWebAPI.APP
             { _IsAlive = false; }
             finally
             { }
+        IssueLogic:
+            try {
+                string _tmpIssueLog = "";
+                int _totalsession = 0;
+                _tmpIssueLog = String.Format("EventLogicServer into issue logic..");
+                _logger.Info(_tmpIssueLog);
+                if (_listDBSession.Count > 1)
+                {
+                    _totalsession = _listDBSession.Count;
+                    for (int i = 1; i < _totalsession; i++)
+                    {
+                        lock (_listDBSession)
+                        {
+                            tmpMsg = "";
+                            _listDBSession[1].DisConnectDB(out tmpMsg);
+                            Console.WriteLine(tmpMsg);
+                            _listDBSession.Remove(_listDBSession[1]);
+                        }
+                    }
+                }
+                Thread.Sleep(5000 * iCurrentllyUse);
+
+                _tmpIssueLog = String.Format("EventLogicServer been stop.");
+                _logger.Info(_tmpIssueLog);
+            }
+            catch(Exception ex) { }
+            _IsAlive = false;
         }
 
         static void listeningStart(object parms)
@@ -690,6 +836,7 @@ namespace RTDWebAPI.APP
                                         string v_WAFERLOT = "";
                                         string v_Quantity = "";
                                         string v_TotalQty = "";
+                                        string v_Force = "true";
                                         try
                                         {
                                             //20230427 Add by Vance, 
@@ -776,10 +923,25 @@ namespace RTDWebAPI.APP
                                             args.Add(v_WAFERLOT);//("EOTD");
                                             args.Add(v_Quantity);//("Quantity");
                                             args.Add(v_TotalQty);//("TotalQty");
+                                            args.Add(v_Force);//("v_Force");
 
                                             //args.Add(dt.Rows[0]["HOLDCODE"].ToString().Equals("") ? "" : dt.Rows[0]["HOLDCODE"].ToString());
                                             //args.Add(dt.Rows[0]["HOLDREAS"].ToString().Equals("") ? "" : dt.Rows[0]["HOLDREAS"].ToString());
                                             _functionService.SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
+
+                                            if (!CarrierID.Equals(""))
+                                            {
+                                                tmpMsg = "";
+                                                if (v_Force.ToLower().Equals("true"))
+                                                {
+                                                    sql = _BaseDataService.CarrierTransferDTUpdate(CarrierID, "InfoUpdate");
+                                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                                }
+
+                                                //tmpMsg = "";
+                                                //sql = _BaseDataService.CarrierTransferDTUpdate(CarrierID, "LocateUpdate");
+                                                //_dbTool.SQLExec(sql, out tmpMsg, true);
+                                            }
                                         }
                                         else
                                         {
@@ -817,6 +979,7 @@ namespace RTDWebAPI.APP
                                             args.Add("");
                                             args.Add("");
                                             args.Add("");
+                                            args.Add("");//18 Force
                                             _functionService.SentCommandtoMCSByModel(_dbTool, _configuration, _logger, "InfoUpdate", args);
 
                                         }
@@ -1518,9 +1681,11 @@ namespace RTDWebAPI.APP
                                                                 sql = _BaseDataService.InsertRTDAlarm(tmpArray);
                                                             }
 
-                                                            if (!sql.Equals(""))
-                                                                _dbTool.SQLExec(sql, out tmpMsg, true);
-
+                                                            if (!rtdAlarms.UnitID.Equals(""))
+                                                            {
+                                                                if (!sql.Equals(""))
+                                                                    _dbTool.SQLExec(sql, out tmpMsg, true);
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -1851,7 +2016,10 @@ namespace RTDWebAPI.APP
 
                                         string[] tmpArray = lstTemp.ToArray();
 
-                                        sqlTSCAlarm = _BaseDataService.InsertRTDAlarm(tmpArray);
+                                        if (!rtdAlarms.UnitID.Equals(""))
+                                        {
+                                            sqlTSCAlarm = _BaseDataService.InsertRTDAlarm(tmpArray);
+                                        }
                                     }
 
                                     //tsc alarm and order is Initial, auto delete command.
@@ -3685,7 +3853,8 @@ namespace RTDWebAPI.APP
                                             bool _isLock99 = false;
 
                                             //Order overtime and state is Initial
-                                            int _overtimeforOrder = 10; //minutes
+                                            int _overtimeforOrder = 15; //minutes
+                                            _overtimeforOrder = _configuration["OrderSetting:CommandOverTime"] is null? 15 : int.Parse(_configuration["OrderSetting:CommandOverTime"]);
                                             sql = _BaseDataService.QueryOrderWhenOvertime(_overtimeforOrder.ToString(), tableOrder);
                                             dt = _dbTool.GetDataTable(sql);
                                             if (dt.Rows.Count > 0)
@@ -4324,16 +4493,19 @@ namespace RTDWebAPI.APP
                                             if (dt.Rows.Count > 0)
                                             {
                                                 string carrierID = "";
+                                                int _tmpReleaseSyshold = _configuration["ReflushTime:ReleaseSyshold:Time"] is not null ? int.Parse(_configuration["ReflushTime:ReleaseSyshold:Time"]) : 30;
+                                                string _tmpUnit = _configuration["ReflushTime:ReleaseSyshold:TimeUnit"] is not null ? _configuration["ReflushTime:ReleaseSyshold:TimeUnit"] : "minutes";
+
                                                 foreach (DataRow drCarrier in dt.Rows)
                                                 {
-                                                    if (_functionService.TimerTool(timeUnit, drCarrier["lastModify_dt"].ToString()) >= 30)
+                                                    if (_functionService.TimerTool(_tmpUnit, drCarrier["lastModify_dt"].ToString()) >= _tmpReleaseSyshold)
                                                     {
                                                         carrierID = drCarrier["carrier_id"].ToString();
                                                         _dbTool.SQLExec(_BaseDataService.UpdateTableCarrierTransferByCarrier(carrierID, "Normal"), out tmpMsg, true);
 
                                                         if (tmpMsg.Equals(""))
                                                         {
-                                                            tmpMsg = string.Format("[AutoRelease SysHold Carrier over 30{0}][{1}][{2}]", timeUnit, carrierID, drCarrier["lastModify_dt"].ToString());
+                                                            tmpMsg = string.Format("[AutoRelease SysHold Carrier over {0} {1}][{2}][{3}]", _tmpReleaseSyshold, _tmpUnit, carrierID, drCarrier["lastModify_dt"].ToString());
                                                             _logger.Debug(tmpMsg);
                                                         }
                                                     }
